@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local secrets and operating-system files
+.env
+.env.*
+!.env.example
+.DS_Store
