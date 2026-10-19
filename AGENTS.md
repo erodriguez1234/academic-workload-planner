@@ -43,3 +43,33 @@ This is a student capstone. Explain important code and design decisions
 so that the student can understand and present the work independently.
 Do not implement large features without breaking them into understandable
 steps.
+
+- Eric understands object-oriented programming but is learning Python syntax.
+- Explain new syntax, design choices, and test results in beginner-friendly language.
+- Follow the scope of the current requested step; do not implement later milestones
+  merely because they appear in the plan.
+- Prefer tests that describe expected behavior before implementing a new component.
+
+## Session continuity
+
+At the start of a new task, read this file, `README.md`, the current-status and
+next-task sections of `docs/project-plan.md`, and recent entries in
+`docs/development-journal.md`. Inspect the relevant source, tests, and Git status;
+verify documented status against the code. Preserve existing user changes.
+
+Keep stable working instructions here, setup and usage in the README, design and
+remaining milestones in the project plan, and dated outcomes in the journal.
+Record decisions separately from exploratory ideas. Update these documents at
+milestone boundaries when requested; do not rely on previous chat history alone.
+
+## Current checkpoint — October 19, 2026
+
+- Completed: validated `Assignment` dataclass, four synthetic JSON records,
+  `load_assignments()`, and model/loader tests.
+- Next: define a separate duration-estimate representation and its tests, then
+  implement a small explainable rule-based estimator.
+- No estimator, scheduler, interface, database, or external integration exists yet.
+- Local Qwen/Ollama estimation was discussed only as a possible later comparison.
+- Use the project's `.venv`; avoid installing dependencies into Anaconda/global Python.
+- Run tests from the repository root with `.venv/bin/python -m pytest -v`.
+- Do not run test files directly through Code Runner; use pytest or VS Code Testing.

@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "assignment_id": "sample-quiz-1",
+    "course": "BIOL 101",
+    "title": "Cell Biology Quiz",
+    "assignment_type": "quiz",
+    "due_at": "2026-10-12T18:00:00-07:00",
+    "points_possible": 20.0,
+    "description": "Review cell structures and complete a 10-question multiple-choice quiz."
+  },
+  {
+    "assignment_id": "sample-essay-1",
+    "course": "ENG 101",
+    "title": "Persuasive Essay Draft",
+    "assignment_type": "essay",
+    "due_at": "2026-10-16T23:59:00-07:00",
+    "points_possible": 100.0,
+    "description": "Write a 1000-word persuasive essay using two sources. Include an outline, a draft, and a bibliography."
+  },
+  {
+    "assignment_id": "sample-reading-1",
+    "course": "HIST 201",
+    "title": "Optional Industrial Revolution Reading",
+    "assignment_type": "reading",
+    "due_at": null,
+    "points_possible": null,
+    "description": "Read a 15-page background chapter on the Industrial Revolution and take notes for discussion. This reading is ungraded and has no deadline."
+  },
+  {
+    "assignment_id": "sample-programming-1",
+    "course": "CS 101",
+    "title": "Python Functions Practice",
+    "assignment_type": "programming",
+    "due_at": "2026-10-14T17:00:00-07:00",
+    "points_possible": 50.0,
+    "description": "Implement three Python functions that process lists, write tests for each function, and submit a short explanation of the results."
+  }
+]

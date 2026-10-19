@@ -52,6 +52,7 @@ The minimum viable product must:
 10. Report assignments that cannot be scheduled completely.
 11. Display assignments, estimates, and sessions in Streamlit.
 12. Include automated tests for important scheduling rules.
+13. Allow the student to review and adjust estimated durations before scheduling.
 
 The minimum viable product must work without Canvas, Google Calendar, or machine learning.
 
@@ -63,9 +64,9 @@ The following features will only be attempted after the minimum viable product i
 - Reading busy periods from Google Calendar
 - Exporting approved sessions to a separate Google Calendar
 - SQLite database persistence
-- User adjustment of duration estimates
 - Actual completion-time tracking
 - A regression-based duration estimator
+- Optional local LLM estimation comparison using a model such as Qwen through Ollama
 - Automatic rescheduling after a missed session
 - A built-in assignment timer
 - Multiple-user support
@@ -90,6 +91,8 @@ The semester prototype is not intended to:
 ## 8. Technology Stack
 
 ### Core technologies
+
+These are planned technologies. The completed loading milestone uses Python's standard library and pytest only; install other dependencies only when needed. The current environment uses Python 3.13; Python 3.11+ supports the loader's UTC `Z` parsing.
 
 - Python
 - Streamlit
@@ -158,27 +161,28 @@ Suggested fields:
 
 ### Assignment
 
-Suggested fields:
+Implemented in `workload_planner/models.py`:
 
-- Internal ID
-- Canvas assignment ID
-- Course ID
-- Title
-- Description
-- Assignment type
-- Point value
-- Due date and time
-- Submission status
+- `assignment_id: str`
+- `course: str`
+- `title: str`
+- `assignment_type: str`
+- `due_at: datetime | None` (required argument, may explicitly be absent)
+- `points_possible: float | None = None` (also accepts integers at runtime)
+- `description: str = ""`
+
+Required text must be nonblank strings. Supplied points must be numeric, not Boolean, and nonnegative. Supplied deadlines must be timezone-aware datetimes. Descriptions must be strings. Validation occurs in `__post_init__` at construction. Canvas IDs and submission status are deferred until needed.
 
 ### Estimate
 
-Suggested fields:
+Next milestone: define a representation separate from `Assignment`. Proposed initial fields:
 
 - Assignment ID
 - Estimated minutes
 - Estimation method
-- Date generated
-- User-adjusted value
+- Explanation
+
+Estimated minutes will mean active work: understanding instructions, completing the task, and reviewing it. Breaks and waiting time are excluded. Timestamp/history and persisted user adjustments can be added when needed. No estimate model or rules are implemented yet.
 
 ### Availability Period
 
@@ -211,6 +215,8 @@ Suggested fields:
 ## 11. Rule-Based Estimation Strategy
 
 The first estimator will assign a base duration according to assignment type.
+
+Start with a small documented mapping, a fallback for unknown categories, and an explanation of each estimate. Actual base values remain to be chosen and are approximate hypotheses, not measured predictions. Test supported types, fallback behavior, and positive durations before adding adjustments. Keep estimated minutes separate from assignment points.
 
 Example categories may include:
 
@@ -257,15 +263,19 @@ The trained model will be compared against:
 
 A machine-learning model will only replace the baseline if it produces a meaningful improvement on previously unseen data.
 
+Hosted AI estimation and local Qwen/Ollama inference were discussed, but neither was adopted for the MVP. A pretrained local model could later be compared with the rules using actual completion times, response latency, and failure rates. Calling a model does not automatically personalize it or train it. Local execution requires suitable hardware; remote web deployment would need access to a model service. Retain the rule-based baseline and fallback if this experiment is pursued.
+
 ## 13. Scheduling Strategy
 
-The scheduler will initially divide availability into fixed-size time blocks.
+The proposed first scheduler will use dated availability periods, order assignments by earliest deadline, and place work into the earliest available periods. Split work to respect maximum session length, allowing a shorter final session. More advanced slack-based prioritization is deferred until the baseline works.
+
+Pass an explicit planning start time and choose a student timezone for daily limits. Define behavior for overdue or undated assignments, overlapping availability, and midnight-crossing periods before implementation. Weekly recurring availability will be expanded into dated periods over a chosen planning horizon for the interface.
 
 The algorithm will:
 
 1. Remove unavailable or occupied periods.
 2. Calculate the remaining work for each assignment.
-3. Rank assignments according to urgency and scheduling difficulty.
+3. Initially rank assignments by deadline with deterministic tie handling.
 4. Split assignment work into sessions.
 5. Assign sessions to available periods.
 6. Validate the resulting schedule.
@@ -285,7 +295,7 @@ One useful concept is assignment slack:
 slack = available study time before deadline - remaining assignment work
 ```
 
-Assignments with the least slack should generally receive higher priority.
+Least-slack prioritization is a possible later improvement. The initial greedy algorithm does not guarantee an optimal schedule. A failure to place work must be reported as unscheduled work, not proof that no feasible arrangement exists.
 
 ## 14. Scheduling Constraints
 
@@ -303,6 +313,8 @@ A valid schedule must satisfy the following requirements:
 ## 15. Testing Strategy
 
 ### Unit tests
+
+Completed loading milestone: 15 model cases and 29 loader cases, all passing on October 19, 2026. Loader tests use pytest fixtures and temporary files. They cover multiple records, timezone offsets and UTC `Z`, null/default values, empty lists, malformed JSON, wrong structures, missing required fields, invalid dates/model values, record-context errors, and missing files. Scheduling and estimation tests below remain future work.
 
 Unit tests will cover:
 
@@ -437,16 +449,19 @@ Any user study will follow the professor’s requirements concerning consent and
 
 ## 19. Semester Milestones
 
-### Milestone 1: Repository and requirements
+### Milestone 1: Validated sample-data loading — complete
 
 - Initialize the repository
 - Add documentation
 - Define sample assignment data
-- Define assignment and session representations
+- Define and validate the Assignment representation
+- Load sample JSON with datetime conversion and contextual errors
 - Configure pytest
+- Pass all 44 model/loader cases and verify the four sample records
 
 ### Milestone 2: Rule-based estimation
 
+- Define a separate estimate representation and its tests
 - Classify sample assignments
 - Calculate initial duration estimates
 - Validate estimates
@@ -454,6 +469,7 @@ Any user study will follow the professor’s requirements concerning consent and
 
 ### Milestone 3: Scheduling engine
 
+- Define study sessions, preferences, and a result containing unscheduled minutes/reasons
 - Represent availability
 - Split assignments into sessions
 - Prioritize assignments
@@ -526,19 +542,27 @@ The project does not require a highly accurate machine-learning model or a produ
 
 ## 21. Current Status
 
-The project is currently in the planning and initial development stage.
+As of October 19, 2026, milestone 1 is complete. `load_assignments(path: str | Path) -> list[Assignment]` reads UTF-8 JSON, preserves input order, converts ISO 8601 dates, and creates validated model objects. It requires a top-level list and object records. Required fields must be present; `due_at: null` is permitted. Omitted points/description use model defaults. Unknown fields are rejected by the constructor.
 
-The immediate next milestone is:
+Malformed JSON produces a ValueError with file and syntax location. Record errors produce ValueError with a one-based record number and relevant field. File-access errors propagate. Invalid records stop loading rather than silently returning a partial list. The synthetic sample contains quiz, essay, reading, and programming records; exactly one has no deadline or points.
 
-> Given a sample JSON file containing assignments and a manually defined weekly availability schedule, generate non-overlapping study sessions that finish before their respective deadlines.
+No estimator, availability/session models, scheduler, UI, persistence, or external integration is implemented. The next milestone is an explainable rule-based estimate for each loaded assignment.
+
+Known limitations: model mutation bypasses construction validation; NaN/infinite points and duplicate IDs are not yet rejected; dependency versions are not pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
+
+The earlier September-to-December schedule and proposed October 6-to-November 2 acceleration were planning targets, not completion evidence. The accelerated dates need reassessment against the actual checkpoint. Prioritize the tested sample-data MVP and final documentation; attempt optional integrations only after it is stable. Confirm final delivery date and local-versus-public deployment expectations with the professor.
 
 ## 22. Immediate Next Tasks
 
-1. Create the initial repository structure.
-2. Add a `.gitignore`.
-3. Create a Python virtual environment.
-4. Create a sample assignment JSON file.
-5. Define the internal `Assignment` and `StudySession` data structures.
-6. Write a loader for the sample JSON.
-7. Write initial validation tests.
-8. Commit the first working checkpoint.
+1. Review and commit the completed loading milestone and updated documentation.
+2. Propose the estimate representation, field validation, and tests; explain each decision before implementation.
+3. Implement and test base-duration rules, an unknown-type fallback, and explanations.
+4. Define availability, preferences, sessions, and scheduling results.
+5. Build the scheduler incrementally with constraint tests and explicit unscheduled-work reports.
+6. Demonstrate the complete pipeline with fitting and overloaded sample workloads.
+7. Add a Streamlit interface, weekly availability expansion, editable estimates, and warnings.
+8. Evaluate and document the core MVP before adding SQLite, Canvas, or Google Calendar.
+9. Collect completion-time observations for estimation evaluation; local LLM/regression experiments remain optional.
+10. Prepare the report, repeatable demonstration, and deployment appropriate to course requirements.
+
+At each milestone, verify tests, review changes, record decisions and limitations in the journal, and make a focused Git checkpoint. New chats should read `AGENTS.md`, the README, this status section, and the journal, then verify source and Git state. Do not assume prior conversation access or treat exploratory ideas as approved scope.
