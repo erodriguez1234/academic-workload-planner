@@ -1,5 +1,15 @@
 # Development Journal
 
+## October 19, 2026 — Initial rule-based estimation completed
+
+- Added `DurationEstimate` to models.py with assignment ID, positive integer minutes, method, and explanation. Booleans/floats are rejected as minutes; text must be nonblank. Validation occurs at construction.
+- Created estimator.py with `estimate_duration(assignment)` and `rule_based_v1`: quiz 30, discussion 45, reading 60, homework 90, essay 180, programming 180, fallback 90 minutes.
+- Rules are provisional active-work defaults, not measured predictions. Matching normalizes a local type string without changing assignments. Explanations identify fallback/default and lack of personalization.
+- Wrote tests first and confirmed missing-import failures, then implemented the model and estimator. Full suite: 79 passed (36 model, 29 loader, 14 estimator). Sample-file integration yields quiz 30, essay 180, reading 60, programming 180 minutes, including estimation without a deadline.
+- New test concepts: `dataclasses.replace` creates modified copies; `asdict` snapshots fields for mutation checks; stacked parameterization checks combinations of fields and invalid values.
+- No dependencies added. No workload extraction, UI adjustments, AI, or scheduling implemented. Student adjustments remain an interface task and should preserve original estimates.
+- Next: explain and define availability periods, preferences, study sessions, and results with unscheduled work. Historical entries below describe earlier checkpoints, not the current implementation.
+
 ## October 19, 2026 — Retrospective and loading-milestone checkpoint
 
 This entry summarizes work completed across earlier sessions and the current documentation checkpoint. It is a retrospective, not a claim that every implementation change occurred today. Summer implementation was limited while Eric focused on an internship; initial work emphasized scope and architecture.

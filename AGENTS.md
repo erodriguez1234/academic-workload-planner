@@ -66,9 +66,10 @@ milestone boundaries when requested; do not rely on previous chat history alone.
 
 - Completed: validated `Assignment` dataclass, four synthetic JSON records,
   `load_assignments()`, and model/loader tests.
-- Next: define a separate duration-estimate representation and its tests, then
-  implement a small explainable rule-based estimator.
-- No estimator, scheduler, interface, database, or external integration exists yet.
+- Completed: `DurationEstimate`, `rule_based_v1` type-based estimation, and tests
+  (79 total passing cases).
+- Next: define availability, preferences, sessions, and scheduling results.
+- No scheduler, interface, database, or external integration exists yet.
 - Local Qwen/Ollama estimation was discussed only as a possible later comparison.
 - Use the project's `.venv`; avoid installing dependencies into Anaconda/global Python.
 - Run tests from the repository root with `.venv/bin/python -m pytest -v`.

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from workload_planner.models import Assignment
+from workload_planner.models import Assignment, DurationEstimate
 
 
 def test_assignment_stores_valid_values() -> None:
@@ -146,3 +146,43 @@ def test_assignment_rejects_non_text_description() -> None:
             due_at=None,
             description=123,
         )
+
+
+def test_duration_estimate_stores_valid_values() -> None:
+    estimate = DurationEstimate("quiz-1", 30, "rule_based_v1", "Default for quiz.")
+
+    assert estimate.assignment_id == "quiz-1"
+    assert estimate.estimated_minutes == 30
+    assert estimate.method == "rule_based_v1"
+    assert estimate.explanation == "Default for quiz."
+
+
+@pytest.mark.parametrize("minutes", [0, -1])
+def test_duration_estimate_rejects_nonpositive_minutes(minutes: int) -> None:
+    with pytest.raises(ValueError, match="estimated_minutes"):
+        DurationEstimate("quiz-1", minutes, "rule_based_v1", "Default for quiz.")
+
+
+@pytest.mark.parametrize("minutes", [30.0, 1.5, "30", None, True, False])
+def test_duration_estimate_rejects_noninteger_minutes(minutes: object) -> None:
+    with pytest.raises(TypeError, match="estimated_minutes"):
+        DurationEstimate("quiz-1", minutes, "rule_based_v1", "Default for quiz.")
+
+
+@pytest.mark.parametrize("field_name", ["assignment_id", "method", "explanation"])
+@pytest.mark.parametrize(
+    "value, error_type", [("", ValueError), ("   ", ValueError), (123, TypeError), (None, TypeError)]
+)
+def test_duration_estimate_validates_text(
+    field_name: str, value: object, error_type: type[Exception]
+) -> None:
+    values = {
+        "assignment_id": "quiz-1",
+        "estimated_minutes": 30,
+        "method": "rule_based_v1",
+        "explanation": "Default for quiz.",
+    }
+    values[field_name] = value
+
+    with pytest.raises(error_type, match=field_name):
+        DurationEstimate(**values)

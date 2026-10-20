@@ -175,14 +175,14 @@ Required text must be nonblank strings. Supplied points must be numeric, not Boo
 
 ### Estimate
 
-Next milestone: define a representation separate from `Assignment`. Proposed initial fields:
+Implemented as `DurationEstimate`, separately from `Assignment`, with these fields:
 
 - Assignment ID
 - Estimated minutes
 - Estimation method
 - Explanation
 
-Estimated minutes will mean active work: understanding instructions, completing the task, and reviewing it. Breaks and waiting time are excluded. Timestamp/history and persisted user adjustments can be added when needed. No estimate model or rules are implemented yet.
+Estimated minutes mean active work: understanding instructions, completing the task, and reviewing it. Breaks and waiting time are excluded. The model validates positive integer minutes and nonblank text at construction. Timestamp/history and student adjustments are deferred.
 
 ### Availability Period
 
@@ -216,7 +216,7 @@ Suggested fields:
 
 The first estimator will assign a base duration according to assignment type.
 
-Start with a small documented mapping, a fallback for unknown categories, and an explanation of each estimate. Actual base values remain to be chosen and are approximate hypotheses, not measured predictions. Test supported types, fallback behavior, and positive durations before adding adjustments. Keep estimated minutes separate from assignment points.
+Implemented `rule_based_v1`: quiz 30, discussion 45, reading 60, homework 90, essay 180, programming 180; unknown types use 90 minutes. These are approximate hypotheses, not measured predictions. Matching normalizes whitespace/capitalization without modifying assignments. Explanations distinguish defaults/fallbacks. Tests cover rules, validation, repeatability, no mutation, and the sample-data pipeline. Points, descriptions, courses, and deadlines do not affect v1 durations. Workload extraction and student adjustments remain deferred.
 
 Example categories may include:
 
@@ -459,7 +459,7 @@ Any user study will follow the professor’s requirements concerning consent and
 - Configure pytest
 - Pass all 44 model/loader cases and verify the four sample records
 
-### Milestone 2: Rule-based estimation
+### Milestone 2: Rule-based estimation — initial version complete
 
 - Define a separate estimate representation and its tests
 - Classify sample assignments
@@ -546,7 +546,7 @@ As of October 19, 2026, milestone 1 is complete. `load_assignments(path: str | P
 
 Malformed JSON produces a ValueError with file and syntax location. Record errors produce ValueError with a one-based record number and relevant field. File-access errors propagate. Invalid records stop loading rather than silently returning a partial list. The synthetic sample contains quiz, essay, reading, and programming records; exactly one has no deadline or points.
 
-No estimator, availability/session models, scheduler, UI, persistence, or external integration is implemented. The next milestone is an explainable rule-based estimate for each loaded assignment.
+The initial estimator and DurationEstimate model are now implemented. All 79 cases pass: 36 model, 29 loader, and 14 estimator cases. Sample estimates are quiz 30, essay 180, reading 60, and programming 180 minutes. Availability/session models, scheduler, UI, persistence, and external integrations are not implemented. Next: scheduling representations and their validation tests.
 
 Known limitations: model mutation bypasses construction validation; NaN/infinite points and duplicate IDs are not yet rejected; dependency versions are not pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
 
@@ -554,9 +554,9 @@ The earlier September-to-December schedule and proposed October 6-to-November 2 
 
 ## 22. Immediate Next Tasks
 
-1. Review and commit the completed loading milestone and updated documentation.
-2. Propose the estimate representation, field validation, and tests; explain each decision before implementation.
-3. Implement and test base-duration rules, an unknown-type fallback, and explanations.
+1. Loading milestone committed as `8ffa2c4`.
+2. Estimate representation, validation, and tests completed; review the implementation.
+3. Base-duration rules, fallback, and explanations completed; commit this milestone when requested.
 4. Define availability, preferences, sessions, and scheduling results.
 5. Build the scheduler incrementally with constraint tests and explicit unscheduled-work reports.
 6. Demonstrate the complete pipeline with fitting and overloaded sample workloads.

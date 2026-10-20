@@ -76,7 +76,9 @@ The project will use sample data before connecting to external services. This al
 
 ## Initial Estimation Approach
 
-The next milestone will start with base durations by assignment type, an unknown-type fallback, and explanations. Actual duration rules have not been selected yet. Later adjustments may consider characteristics such as:
+`estimate_duration(assignment)` in `workload_planner/estimator.py` returns a `DurationEstimate` with assignment ID, positive integer minutes, method, and explanation. Method `rule_based_v1` uses provisional defaults: quiz 30, discussion 45, reading 60, homework 90, essay 180, programming 180, and unknown types 90 minutes.
+
+Matching strips surrounding whitespace and ignores capitalization without modifying assignments. Explanations identify defaults/fallbacks and lack of personalization. Active minutes include understanding instructions, doing the work, and reviewing it, excluding breaks and waiting. These values are starting assumptions, not measured predictions. Only type affects v1 estimates. Later adjustments may consider characteristics such as:
 
 - Assignment type
 - Point value
@@ -102,7 +104,7 @@ The scheduling algorithm should:
 
 ## Project Status
 
-As of October 19, 2026, the first milestone is complete: sample JSON can be loaded into validated `Assignment` objects. The latest milestone verification passed 44 tests (15 model cases and 29 loader cases).
+As of October 19, 2026, loading and initial rule-based estimation are complete. The latest verification passed 79 tests (36 model cases, 29 loader cases, and 14 estimator cases).
 
 Implemented:
 
@@ -113,7 +115,7 @@ Implemented:
 
 The loader accepts an empty list, requires an explicit `due_at` field (which may be `null`), and uses model defaults for omitted points and descriptions. It raises an error rather than returning partial results when any record is invalid. Unknown fields are rejected by the model constructor.
 
-The estimator, scheduler, Streamlit interface, database, Canvas, and Google Calendar are not implemented. The next milestone is a separate duration-estimate representation and a tested rule-based estimator. Local LLM estimation is an optional future experiment, not part of the current implementation.
+The scheduler, Streamlit interface, database, Canvas, and Google Calendar are not implemented. Next: availability, preferences, sessions, and scheduling results. Student adjustments are deferred to the interface; workload extraction is not implemented. Local LLM estimation remains an optional future experiment.
 
 ## Current Project Structure
 
@@ -126,12 +128,14 @@ academic-workload-planner/
 ├── workload_planner/
 │   ├── __init__.py
 │   ├── models.py
+│   ├── estimator.py
 │   └── loaders.py
 ├── sample_data/
 │   └── assignments.json
 ├── tests/
 │   ├── __init__.py
 │   ├── test_models.py
+│   ├── test_estimator.py
 │   └── test_loaders.py
 └── docs/
     ├── project-plan.md
@@ -184,10 +188,22 @@ There is no web application entry point yet. The sample deadlines are fixed Octo
 
 ## Current Limitations and Handoff
 
+To try estimation, run `.venv/bin/python` from the repository root and enter:
+
+```python
+from workload_planner.loaders import load_assignments
+from workload_planner.estimator import estimate_duration
+
+assignments = load_assignments("sample_data/assignments.json")
+for assignment in assignments:
+    estimate = estimate_duration(assignment)
+    print(assignment.title, estimate.estimated_minutes, estimate.explanation)
+```
+
 - Model validation runs at construction, not automatically on later field edits.
 - Non-finite point values (NaN/infinity) and duplicate assignment IDs are not currently rejected.
 - No scheduling policy for overdue or undated assignments exists yet.
-- Dependencies are not pinned; 44 passing cases establish this checkpoint, not exhaustive validation.
+- Dependencies are not pinned; 79 passing cases establish this checkpoint, not exhaustive validation or prediction accuracy.
 - See [the project plan](docs/project-plan.md) for the next milestone and [the development journal](docs/development-journal.md) for decisions and learning notes. New sessions should also read `AGENTS.md` and inspect the current code and Git state.
 
 ## Author
