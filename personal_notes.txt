@@ -1,0 +1,255 @@
+models.py
+
+Holds the classes/models to be used for the planner
+
+Classes:
+
+Assignment -> Used for each assignment object
+    assignment_id: str
+    course: str
+    title: str
+    assignment_type: str
+    due_at: datetime | None
+    points_possible: float | None = None
+    description: str = ""
+
+DurationEstimate -> Creates an object for each assignment which holds time estimated in minutes
+    assignment_id: str
+    estimated_minutes: int
+    method: str
+    explanation: str
+
+Functions/methods:
+
+Assignment.__post_init__() -> Validates assignment fields after creation
+    Input: the object's fields
+    Output: None; raises an error for invalid values
+
+DurationEstimate.__post_init__() -> Validates ID, minutes, method, and explanation
+    Input: the object's fields
+    Output: None; raises an error for invalid values
+
+Connections:
+    loaders.py creates Assignment objects.
+    estimator.py reads Assignment objects and creates DurationEstimate objects.
+
+
+loaders.py
+
+Reads assignment records from a JSON file and converts them into objects
+
+Classes: None defined here
+
+Functions:
+
+load_assignments(path) -> Loads and validates assignment records
+    Input: file path as str or Path
+    Output: list[Assignment]
+    Flow: read JSON -> check records -> convert deadlines -> create Assignments
+    Invalid input raises an error instead of returning a partial list.
+
+Connections:
+    Uses Assignment from models.py.
+    Its output can be passed one assignment at a time to estimator.py.
+
+
+estimator.py
+
+Chooses a provisional active-working-time estimate based on assignment type
+
+Classes: None defined here
+
+Functions:
+
+estimate_duration(assignment) -> Chooses minutes and explains the estimate
+    Input: Assignment
+    Output: DurationEstimate
+    Flow: normalize type -> select default or fallback -> create estimate
+    Defaults: quiz 30, discussion 45, reading 60, homework 90,
+              essay 180, programming 180; unknown type 90 minutes.
+
+Connections:
+    Uses Assignment and DurationEstimate from models.py.
+    Estimated minutes can be copied into a SchedulingTask by the caller.
+    Does not call the scheduler or change the assignment.
+
+
+scheduler.py
+
+Places requested work into available study periods
+
+Classes: None defined here
+
+Functions:
+
+_prepare_slots(availability, preferences) -> Prepares free-time windows
+    Input: AvailabilityPeriods and SchedulingPreferences
+    Output: list of (start, end) datetime pairs in UTC
+    Flow: sort -> reject overlaps -> clip at planning start -> split at midnight
+
+build_schedule(tasks, availability, preferences) -> Creates a study schedule
+    Input: SchedulingTasks, AvailabilityPeriods, and SchedulingPreferences
+    Output: ScheduleResult
+    Flow: check IDs/deadlines -> order tasks by deadline then ID -> place sessions
+          -> continue remaining work in later windows -> report unplaced minutes
+    Respects availability, deadlines, maximum session length, and daily limits.
+    Uses the supplied planning start, not the computer's current time.
+    Greedy approach: no backtracking, spacing optimization, or automatic breaks.
+
+Connections:
+    Uses all six classes from scheduling_models.py.
+    Calls its own _prepare_slots() helper.
+    Does not call loaders.py or estimator.py; accepts requested minutes directly.
+
+
+scheduling_models.py
+
+Holds the input/output classes used by scheduler.py
+
+Classes:
+
+AvailabilityPeriod -> One dated window when studying is possible
+    start_at: datetime
+    end_at: datetime
+
+SchedulingPreferences -> Planning context and study limits
+    planning_start: datetime
+    student_timezone: ZoneInfo
+    max_session_minutes: int
+    daily_study_limit_minutes: int
+
+SchedulingTask -> Work requested for one assignment, independent of the estimator
+    assignment_id: str
+    required_minutes: int
+    due_at: datetime | None
+
+StudySession -> One planned block of work for an assignment
+    assignment_id: str
+    start_at: datetime
+    end_at: datetime
+
+UnscheduledWork -> Requested work that was not placed
+    assignment_id: str
+    remaining_minutes: int
+    reason: missing_deadline / deadline_not_after_start / unplaced_by_greedy
+
+ScheduleResult -> Holds the requests, sessions, and remaining work
+    tasks: tuple[SchedulingTask, ...]
+    sessions: tuple[StudySession, ...]
+    unscheduled_work: tuple[UnscheduledWork, ...]
+    Checks per task: requested minutes = scheduled + unscheduled minutes.
+
+Functions/helpers:
+
+_validate_text(value, field_name) -> Checks for a nonblank string
+    Input: value and field name; Output: None or an error
+
+_validate_minutes(value, field_name) -> Checks for a positive integer, not Boolean
+    Input: value and field name; Output: None or an error
+
+_validate_datetime(value, field_name) -> Checks for a timezone-aware datetime
+    Input: value and field name; Output: None or an error
+
+_elapsed_minutes(start_at, end_at) -> Validates an interval and calculates duration
+    Input: two aware datetimes; Output: positive whole-minute int or an error
+    Uses UTC elapsed time to handle clock changes.
+
+Methods/properties:
+
+__post_init__() -> Present in all six classes; validates fields after creation
+    Input: the object's fields; Output: None or an error
+    ScheduleResult also checks IDs and minute accounting.
+
+duration_minutes -> Property on AvailabilityPeriod and StudySession
+    Input: the object's timestamps; Output: calculated int minutes
+    Read as session.duration_minutes, without parentheses.
+
+message -> Property on UnscheduledWork
+    Input: the object's ID, remaining minutes, and reason; Output: readable str
+    Read as work.message; says "Could not schedule" and explains the reason.
+
+Connections:
+    scheduler.py imports these classes to read inputs and construct outputs.
+    This file does not import the scheduler or estimator.
+    All six classes are frozen: ordinary field reassignment is blocked.
+
+
+HOW THE FILES FIT TOGETHER
+
+When connected by a caller (such as a script or future interface):
+
+    JSON file
+        -> loaders.load_assignments() -> list of Assignment objects
+        -> estimator.estimate_duration() for each -> DurationEstimate objects
+        -> caller combines assignment ID, deadline, and minutes into SchedulingTasks
+        -> caller supplies AvailabilityPeriods and SchedulingPreferences
+        -> scheduler.build_schedule() -> ScheduleResult
+                                      -> StudySessions + UnscheduledWork
+
+    models.py supplies assignment/estimate structures.
+    scheduling_models.py supplies scheduling structures.
+    There is no automatic application entry point connecting this whole flow yet.
+    Unplaced work does not prove that no feasible schedule exists.
+
+
+TEST FILES
+
+No classes are defined in these test files.
+Each test_* function checks expected behavior using assertions or expected errors.
+Inputs: prepared test data and, where needed, pytest-provided arguments.
+Outputs: test functions return None; pytest reports pass/fail.
+
+
+test_models.py
+
+Tests: Assignment and DurationEstimate from models.py
+    test_assignment_* -> Valid fields, optional values, and invalid inputs
+    test_duration_estimate_* -> Valid estimates, text, and positive integer minutes
+
+
+test_loaders.py
+
+Tests: load_assignments() from loaders.py and the Assignment objects it returns
+    test_load_assignments_* -> Valid JSON, date conversion, defaults, and errors
+
+Helper functions:
+    valid_record() -> No arguments; returns a fresh assignment dictionary (fixture)
+    write_json(tmp_path, data) -> Temporary folder + data; returns a JSON file Path
+
+
+test_estimator.py
+
+Tests: estimate_duration() from estimator.py
+    test_* -> Type defaults, fallback, normalization, explanations,
+              repeatability, unchanged inputs, and loaded sample assignments
+    Sample-data test also calls load_assignments() from loaders.py.
+
+Helper functions:
+    assignment() -> No arguments; returns a sample Assignment (fixture)
+
+
+test_scheduling_models.py
+
+Tests: All six classes from scheduling_models.py
+    test_* -> Valid/invalid fields, aware timestamps, elapsed minutes,
+              frozen fields, reason codes, IDs, and exact minute accounting
+    Includes full, partial, and completely unplaced result examples.
+    Also checks that failure messages identify the work without claiming impossibility.
+    Does not run the scheduling algorithm.
+
+
+test_scheduler.py
+
+Tests: build_schedule() from scheduler.py using scheduling_models.py objects
+    test_* -> Placement, splitting, later periods, deadline/ID ordering,
+              limits, planning start, midnight, clock changes, overlaps,
+              remaining minutes, repeatability, and unchanged inputs
+
+Helper functions:
+    assert_schedule_constraints(result, availability, settings) -> Checks output rules;
+        returns None when valid, otherwise an assertion fails (test helper only).
+    at(day, hour, minute=0) -> Numbers; returns a fixed October 2026 local datetime
+    preferences(session_limit=60, daily_limit=120) -> Limits; returns SchedulingPreferences
+
+Run all tests from the project root:
+    .venv/bin/python -m pytest -v

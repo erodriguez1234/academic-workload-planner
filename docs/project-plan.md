@@ -184,24 +184,20 @@ Implemented as `DurationEstimate`, separately from `Assignment`, with these fiel
 
 Estimated minutes mean active work: understanding instructions, completing the task, and reviewing it. Breaks and waiting time are excluded. The model validates positive integer minutes and nonblank text at construction. Timestamp/history and student adjustments are deferred.
 
-### Availability Period
+### Scheduling representations — step 4 complete
 
-Suggested fields:
+Implemented in `workload_planner/scheduling_models.py` as frozen dataclasses:
 
-- Day or date
-- Start time
-- End time
-- Recurring status
+- `AvailabilityPeriod(start_at, end_at)`: dated, aware datetime boundaries; may cross midnight.
+- `SchedulingPreferences(planning_start, student_timezone, max_session_minutes, daily_study_limit_minutes)`: explicit aware planning start, standard-library `ZoneInfo`, and positive integer limits.
+- `SchedulingTask(assignment_id, required_minutes, due_at)`: independent of the estimation method; accepts missing/past deadlines as data.
+- `StudySession(assignment_id, start_at, end_at)`: positive whole-minute interval; `duration_minutes` is derived using UTC elapsed time.
+- `UnscheduledWork(assignment_id, remaining_minutes, reason)`: positive integer remainder and a validated reason code.
+- `ScheduleResult(tasks, sessions, unscheduled_work)`: tuples of validated records; unique task IDs, known output IDs, at most one remainder per task, and exact minute accounting per task.
 
-### Study Session
-
-Suggested fields:
-
-- Assignment ID
-- Start date and time
-- End date and time
-- Session status
-- Google Calendar event ID
+Required IDs are nonblank strings; Boolean and floating-point minute values are rejected.
+Frozen dataclasses prevent ordinary reassignment after construction. Calendar identifiers,
+recurrence, completion status, and interface controls remain deferred.
 
 ### Completion Record
 
@@ -270,6 +266,30 @@ Hosted AI estimation and local Qwen/Ollama inference were discussed, but neither
 The proposed first scheduler will use dated availability periods, order assignments by earliest deadline, and place work into the earliest available periods. Split work to respect maximum session length, allowing a shorter final session. More advanced slack-based prioritization is deferred until the baseline works.
 
 Pass an explicit planning start time and choose a student timezone for daily limits. Define behavior for overdue or undated assignments, overlapping availability, and midnight-crossing periods before implementation. Weekly recurring availability will be expanded into dated periods over a chosen planning horizon for the interface.
+
+### Adopted baseline policies (implemented in step 5)
+
+- Missing deadlines: leave all requested minutes unscheduled with `missing_deadline`.
+- Deadlines at or before planning start: leave all minutes unscheduled with `deadline_not_after_start`.
+- Rank eligible tasks by deadline instant in UTC, then assignment ID; reject duplicate IDs.
+- Reject overlapping availability rather than double-counting it. Touching endpoints are allowed.
+- Allow dated availability across midnight; split sessions at midnight in the student's timezone so each session belongs to one local day.
+- Clip usable availability at planning start and deadline. Sessions may end exactly at a deadline.
+- Use positive whole active minutes. Respect both session and daily caps even when the session cap exceeds the daily cap.
+- Report leftover eligible work as `unplaced_by_greedy`; this does not prove infeasibility.
+- Account for every task's requested minutes as session minutes plus remaining minutes.
+
+Step 4 models validate data and accounting only. Step 5 adds `build_schedule()` in
+`scheduler.py`, implementing these policies during placement with 21 scheduler cases.
+It sorts/splits dated windows, tracks their remaining free starts, and shares per-local-day
+minute totals across tasks. All arithmetic uses UTC; output sessions use the student timezone.
+No recurrence expansion or independent post-generation schedule validator is implemented.
+Step 6 completed the failure/boundary audit with 22 additional scheduler cases (43 total)
+and 3 failure-message cases. A shared test helper independently verifies no overlap,
+availability containment, deadlines, session/local daily limits, reason selection, and
+per-task accounting. Existing and added tests cover repeatability and preserved inputs.
+`UnscheduledWork.message` calculates a readable explanation from existing fields; it says
+"Could not schedule" without claiming infeasibility. Placement behavior is unchanged.
 
 The algorithm will:
 
@@ -546,9 +566,9 @@ As of October 19, 2026, milestone 1 is complete. `load_assignments(path: str | P
 
 Malformed JSON produces a ValueError with file and syntax location. Record errors produce ValueError with a one-based record number and relevant field. File-access errors propagate. Invalid records stop loading rather than silently returning a partial list. The synthetic sample contains quiz, essay, reading, and programming records; exactly one has no deadline or points.
 
-The initial estimator and DurationEstimate model are now implemented. All 79 cases pass: 36 model, 29 loader, and 14 estimator cases. Sample estimates are quiz 30, essay 180, reading 60, and programming 180 minutes. Availability/session models, scheduler, UI, persistence, and external integrations are not implemented. Next: scheduling representations and their validation tests.
+The initial estimator and DurationEstimate model are now implemented. All 79 cases pass: 36 model, 29 loader, and 14 estimator cases. Sample estimates are quiz 30, essay 180, reading 60, and programming 180 minutes. Scheduling representations are now implemented with 94 additional cases (173 total passing). As of October 20, step 5 adds the simplest working scheduler with 21 additional cases (194 total passing). It places, splits, and continues work, orders tasks by deadline/ID, enforces session and daily limits, and returns accounted remaining work. UI, persistence, and external integrations are not implemented. Step 6 now adds readable failure messages and the independent constraint audit: 219 total passing (97 scheduling-model and 43 scheduler cases, plus the original 79). Placement behavior is unchanged. Next: review step 6, then demonstrate the loaded/estimated/scheduled pipeline with fitting and overloaded workloads.
 
-Known limitations: model mutation bypasses construction validation; NaN/infinite points and duplicate IDs are not yet rejected; dependency versions are not pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
+Known limitations: existing mutable models can bypass construction validation; assignment loading still accepts NaN/infinite points and duplicate IDs (scheduling results reject duplicate task IDs); dependency versions are not pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
 
 The earlier September-to-December schedule and proposed October 6-to-November 2 acceleration were planning targets, not completion evidence. The accelerated dates need reassessment against the actual checkpoint. Prioritize the tested sample-data MVP and final documentation; attempt optional integrations only after it is stable. Confirm final delivery date and local-versus-public deployment expectations with the professor.
 
@@ -556,10 +576,10 @@ The earlier September-to-December schedule and proposed October 6-to-November 2 
 
 1. Loading milestone committed as `8ffa2c4`.
 2. Estimate representation, validation, and tests completed; review the implementation.
-3. Base-duration rules, fallback, and explanations completed; commit this milestone when requested.
-4. Define availability, preferences, sessions, and scheduling results.
-5. Build the scheduler incrementally with constraint tests and explicit unscheduled-work reports.
-6. Demonstrate the complete pipeline with fitting and overloaded sample workloads.
+3. Base-duration rules, fallback, and explanations completed in `d63da55`.
+4. Availability, preferences, sessions, tasks, and accounted scheduling results completed.
+5. Simplest scheduler completed with incremental tests and explicit unscheduled-work reports.
+6. Failure messages and boundary/constraint audit completed; review, then demonstrate the complete pipeline with fitting and overloaded sample workloads.
 7. Add a Streamlit interface, weekly availability expansion, editable estimates, and warnings.
 8. Evaluate and document the core MVP before adding SQLite, Canvas, or Google Calendar.
 9. Collect completion-time observations for estimation evaluation; local LLM/regression experiments remain optional.

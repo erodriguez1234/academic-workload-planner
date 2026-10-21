@@ -104,7 +104,7 @@ The scheduling algorithm should:
 
 ## Project Status
 
-As of October 19, 2026, loading and initial rule-based estimation are complete. The latest verification passed 79 tests (36 model cases, 29 loader cases, and 14 estimator cases).
+As of October 20, 2026, loading, initial rule-based estimation, scheduling representations, the simplest scheduler, and the step 6 failure/constraint audit are complete. The latest verification passed 219 tests (36 existing model cases, 29 loader cases, 14 estimator cases, 97 scheduling-model cases, and 43 scheduler cases).
 
 Implemented:
 
@@ -115,7 +115,7 @@ Implemented:
 
 The loader accepts an empty list, requires an explicit `due_at` field (which may be `null`), and uses model defaults for omitted points and descriptions. It raises an error rather than returning partial results when any record is invalid. Unknown fields are rejected by the model constructor.
 
-The scheduler, Streamlit interface, database, Canvas, and Google Calendar are not implemented. Next: availability, preferences, sessions, and scheduling results. Student adjustments are deferred to the interface; workload extraction is not implemented. Local LLM estimation remains an optional future experiment.
+The earliest-deadline-first scheduler is implemented. Next: review step 6, then demonstrate the loaded/estimated/scheduled pipeline with fitting and overloaded workloads before starting the interface. The Streamlit interface, database, Canvas, and Google Calendar are not implemented. Student adjustments are deferred to the interface; workload extraction is not implemented. Local LLM estimation remains an optional future experiment.
 
 ## Current Project Structure
 
@@ -128,6 +128,8 @@ academic-workload-planner/
 ├── workload_planner/
 │   ├── __init__.py
 │   ├── models.py
+│   ├── scheduling_models.py
+│   ├── scheduler.py
 │   ├── estimator.py
 │   └── loaders.py
 ├── sample_data/
@@ -135,6 +137,8 @@ academic-workload-planner/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_models.py
+│   ├── test_scheduling_models.py
+│   ├── test_scheduler.py
 │   ├── test_estimator.py
 │   └── test_loaders.py
 └── docs/
@@ -143,6 +147,107 @@ academic-workload-planner/
 ```
 
 Add modules as their milestones begin. The proposed technology stack above is a roadmap, not a list of currently installed dependencies; application code currently uses only the Python standard library, with pytest for testing.
+
+## Scheduling Representations (Step 4)
+
+`workload_planner/scheduling_models.py` defines frozen dataclasses for dated availability,
+explicit planning preferences, estimator-independent workload requests, study sessions,
+unscheduled work, and scheduling results. Required minutes and limits are positive integers;
+timestamps are timezone-aware, and intervals have positive whole-minute elapsed durations.
+Use `ZoneInfo("America/Los_Angeles")` from the standard-library `zoneinfo` module for the
+student timezone. Session durations are calculated in UTC to handle clock changes.
+
+`ScheduleResult` takes tuples of tasks, sessions, and unscheduled work. It rejects duplicate
+task IDs, unknown output IDs, duplicate remainder records, and incorrect per-task minute
+accounting. These checks do not establish schedule feasibility: availability containment,
+deadlines, non-overlap, session limits, daily limits, and reason selection are handled by
+`build_schedule()` in `scheduler.py`. See project-plan.md section 13 for the policies.
+
+## Simplest Scheduler (Step 5)
+
+`build_schedule(tasks, availability, preferences)` accepts lists or tuples of validated
+scheduling models. It preserves task input order in the result, sorts eligible work by
+UTC deadline then assignment ID, and returns chronological sessions in the student's
+timezone. It uses the supplied planning start rather than the computer's current time.
+
+The scheduler fills the earliest free time, splits work at session limits and local midnight,
+and shares daily limits across all tasks and availability periods. Overlapping periods and
+duplicate task IDs raise `ValueError`; touching periods are allowed. Missing deadlines,
+deadlines at/before planning start, and other unplaced work receive the existing explicit
+reason codes. Sessions may end exactly at deadlines. Every requested minute is accounted for.
+
+Run `.venv/bin/python` from the repository root and try:
+
+```python
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from workload_planner.scheduler import build_schedule
+from workload_planner.scheduling_models import (
+    AvailabilityPeriod, SchedulingPreferences, SchedulingTask,
+)
+
+zone = ZoneInfo("America/Los_Angeles")
+
+def at(day: int, hour: int) -> datetime:
+    return datetime(2026, 10, day, hour, tzinfo=zone)
+
+result = build_schedule(
+    tasks=[SchedulingTask("essay", 140, at(12, 20))],
+    availability=[
+        AvailabilityPeriod(at(10, 18), at(10, 21)),
+        AvailabilityPeriod(at(11, 18), at(11, 20)),
+    ],
+    preferences=SchedulingPreferences(at(10, 17), zone, 60, 120),
+)
+for session in result.sessions:
+    print(session.assignment_id, session.start_at, session.end_at, session.duration_minutes)
+print(result.unscheduled_work)
+```
+
+Expected: October 10 from 18:00–19:00 and 19:00–20:00, then October 11 from
+18:00–18:20, with no remaining work. The 120-minute daily cap moves the final 20
+minutes to the next day, even though October 10 has another available hour.
+
+This greedy baseline does not backtrack or optimize spacing. `unplaced_by_greedy` does
+not prove no feasible schedule exists. Sessions may be back-to-back; breaks, minimum
+session length, recurring availability, and existing-calendar work are not modeled.
+Daily totals include only work generated by the current call. Fractional-minute capacity
+is rounded down. Duration estimates remain provisional and unchanged.
+
+## Scheduling Failures and Constraint Tests (Step 6)
+
+A normal scheduling shortfall returns successful sessions and one `UnscheduledWork`
+record for each assignment with remaining work. No requested minutes are silently dropped.
+Each record includes `assignment_id`, `remaining_minutes`, `reason`, and a calculated
+read-only `message`. To read the explanations:
+
+```python
+for work in result.unscheduled_work:
+    print(work.message)
+```
+
+Example: `Could not schedule 30 active working minutes for assignment 'essay': the
+ greedy scheduler left this work unplaced under the supplied availability, deadlines,
+ and study limits.`
+
+| Condition | Behavior |
+|---|---|
+| Missing deadline | All minutes remain; reason `missing_deadline` |
+| Deadline at/before explicit planning start | All minutes remain; reason `deadline_not_after_start` |
+| Other work left unplaced | Remaining minutes reported as `unplaced_by_greedy` |
+| Overlapping availability, including duplicate/nested windows | Raise `ValueError`; reject input before producing a schedule |
+| Touching availability windows | Accepted; sessions may meet at endpoints |
+| Availability crossing midnight | Split at student-local midnight; apply each day's limit separately |
+
+Messages describe what the algorithm could not schedule; they do not claim that no
+feasible arrangement exists. Reason codes remain stable for callers.
+
+The independent test helper `assert_schedule_constraints()` checks output intervals
+against original availability, planning start, deadlines, session limits, local daily
+limits, and exact per-assignment accounting. It is test code, not an application API.
+The audit covers overloaded/mixed workloads, repeatability, input preservation, midnight,
+multiple-day windows, and daylight-saving transitions. Passing these tests is evidence for
+the tested contracts, not a guarantee that every possible timezone/input has been covered.
 
 ## Security and Privacy
 
@@ -184,7 +289,7 @@ Try the actual sample data:
 
 In VS Code, use **Python: Select Interpreter** to select `.venv/bin/python`. Configure **Python: Configure Tests → pytest → tests** to use the Testing view. Code Runner's direct execution of a test file does not run pytest and can produce import-path errors. Explicit `.venv/bin/python` commands do not require activation; optional terminal activation is `source .venv/bin/activate`.
 
-There is no web application entry point yet. The sample deadlines are fixed October 2026 dates; the loader accepts past deadlines, and future scheduling tests should supply an explicit planning start time.
+There is no web application entry point yet. The sample deadlines are fixed October 2026 dates; the loader accepts past deadlines, and scheduling calls and tests supply an explicit planning start time.
 
 ## Current Limitations and Handoff
 
@@ -200,10 +305,10 @@ for assignment in assignments:
     print(assignment.title, estimate.estimated_minutes, estimate.explanation)
 ```
 
-- Model validation runs at construction, not automatically on later field edits.
-- Non-finite point values (NaN/infinity) and duplicate assignment IDs are not currently rejected.
-- No scheduling policy for overdue or undated assignments exists yet.
-- Dependencies are not pinned; 79 passing cases establish this checkpoint, not exhaustive validation or prediction accuracy.
+- Existing `Assignment` and `DurationEstimate` validation runs at construction; later field edits bypass it. New scheduling models are frozen.
+- Assignment loading still accepts non-finite points (NaN/infinity) and duplicate IDs. `ScheduleResult` rejects duplicate requested task IDs.
+- The baseline scheduler enforces the documented placement policies; step 6 adds independent constraint checks in tests and readable failure messages. Greedy leftovers do not prove infeasibility.
+- Dependencies are not pinned; 219 passing cases establish this checkpoint, not exhaustive validation or prediction accuracy.
 - See [the project plan](docs/project-plan.md) for the next milestone and [the development journal](docs/development-journal.md) for decisions and learning notes. New sessions should also read `AGENTS.md` and inspect the current code and Git state.
 
 ## Author

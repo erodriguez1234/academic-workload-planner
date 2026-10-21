@@ -62,14 +62,21 @@ remaining milestones in the project plan, and dated outcomes in the journal.
 Record decisions separately from exploratory ideas. Update these documents at
 milestone boundaries when requested; do not rely on previous chat history alone.
 
-## Current checkpoint — October 19, 2026
+## Current checkpoint — October 20, 2026
 
 - Completed: validated `Assignment` dataclass, four synthetic JSON records,
   `load_assignments()`, and model/loader tests.
 - Completed: `DurationEstimate`, `rule_based_v1` type-based estimation, and tests
   (79 total passing cases).
-- Next: define availability, preferences, sessions, and scheduling results.
-- No scheduler, interface, database, or external integration exists yet.
+- Completed: frozen scheduling input/output models and per-assignment minute accounting
+  (173 total passing cases).
+- Completed: `build_schedule()` earliest-deadline-first baseline, session splitting,
+  dated availability, daily limits, explicit remaining work (194 total passing cases).
+- Completed: step 6 failure messages and independent constraint audit
+  (219 total passing cases).
+- Next: review step 6, then demonstrate the loaded/estimated/scheduled pipeline
+  with fitting and overloaded workloads before starting the interface.
+- No interface, database, or external integration exists yet.
 - Local Qwen/Ollama estimation was discussed only as a possible later comparison.
 - Use the project's `.venv`; avoid installing dependencies into Anaconda/global Python.
 - Run tests from the repository root with `.venv/bin/python -m pytest -v`.
