@@ -174,9 +174,54 @@ Connections:
     All six classes are frozen: ordinary field reassignment is blocked.
 
 
+availability.py
+
+Converts weekly study rules into dated AvailabilityPeriod objects
+
+Classes:
+
+WeeklyAvailability -> One weekday's local study window
+    weekday: int (Monday=0 through Sunday=6)
+    start_time: time
+    end_time: time (earlier means the following day)
+
+Functions:
+    localize_datetime(local, zone) -> Naive datetime + ZoneInfo; returns aware datetime
+        Rejects ambiguous/nonexistent clock-change times.
+    expand_weekly_availability(rules, start_date, end_date, zone)
+        Input: weekly rules, inclusive dates, timezone; Output: list[AvailabilityPeriod]
+        Clips overnight windows to the horizon and rejects overlaps.
+
+Connections:
+    Uses AvailabilityPeriod from scheduling_models.py.
+    streamlit_app.py calls it before calling scheduler.py.
+
+
+streamlit_app.py
+
+Local browser interface connecting the existing modules
+
+Classes: None defined here
+
+Functions:
+    assignment_inputs(assignments, estimates) -> Objects; returns adjusted-minute dict
+    reset_demo(estimates) -> Estimates; restores widget defaults, returns None
+    planning_inputs(estimates) -> Estimates; returns dates/time/timezone/limits tuple
+    weekly_inputs() -> Reads widgets; returns weekly day/time choices
+    show_result(result, assignments) -> Objects; displays sessions/warnings, returns None
+    main() -> No arguments; builds and runs the page, returns None
+
+Connections:
+    Calls load_assignments() and estimate_duration() for the workload table.
+    Calls availability.py to expand weekly windows.
+    Creates SchedulingTasks and SchedulingPreferences, then calls build_schedule().
+    Uses st.session_state for temporary values between interactions.
+    Keeps original estimates separate; hides stale results when inputs change.
+
+
 HOW THE FILES FIT TOGETHER
 
-When connected by a caller (such as a script or future interface):
+streamlit_app.py connects the workflow:
 
     JSON file
         -> loaders.load_assignments() -> list of Assignment objects
@@ -188,7 +233,7 @@ When connected by a caller (such as a script or future interface):
 
     models.py supplies assignment/estimate structures.
     scheduling_models.py supplies scheduling structures.
-    There is no automatic application entry point connecting this whole flow yet.
+    streamlit_app.py is the browser entry point; availability.py expands weekly windows.
     Unplaced work does not prove that no feasible schedule exists.
 
 
@@ -250,6 +295,22 @@ Helper functions:
         returns None when valid, otherwise an assertion fails (test helper only).
     at(day, hour, minute=0) -> Numbers; returns a fixed October 2026 local datetime
     preferences(session_limit=60, daily_limit=120) -> Limits; returns SchedulingPreferences
+
+test_availability.py
+
+Tests: WeeklyAvailability, localize_datetime(), and expand_weekly_availability()
+    Checks weekdays, horizons, overnight carry-in, overlaps, and clock changes.
+
+
+test_streamlit_app.py
+
+Tests: The actual page using Streamlit AppTest
+    Checks edits, persistence during reruns, generation, warnings, validation,
+    correcting errors, stale results, demo reset, and overdue sample dates.
+
+Start the browser app from the project root:
+    .venv/bin/python -m streamlit run streamlit_app.py --server.address 127.0.0.1
+    Open http://127.0.0.1:8501 while the server is running.
 
 Run all tests from the project root:
     .venv/bin/python -m pytest -v

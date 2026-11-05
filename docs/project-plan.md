@@ -317,6 +317,19 @@ slack = available study time before deadline - remaining assignment work
 
 Least-slack prioritization is a possible later improvement. The initial greedy algorithm does not guarantee an optimal schedule. A failure to place work must be reported as unscheduled work, not proof that no feasible arrangement exists.
 
+### Interface and weekly expansion decisions — October 21
+
+- `streamlit_app.py` calls existing tested loader/estimator/scheduler functions. No estimation or placement rules moved into the page.
+- `availability.py` defines frozen `WeeklyAvailability` and a separately tested expansion function, leaving scheduler inputs as dated periods.
+- Weekly weekdays use Monday=0 through Sunday=6. The first page offers one enabled window per day; the expander supports multiple rules but rejects overlaps.
+- End earlier than start means overnight; equal times are invalid. Include previous-day carry-in and clip to an inclusive date horizon of 1–366 days.
+- Reject ambiguous/nonexistent local-time endpoints and planning starts using UTC round-trip checks instead of guessing around daylight-saving changes.
+- Store student-adjusted minutes separately in session state and create `SchedulingTask` objects from them; preserve original estimates and assignments.
+- Keep all widgets rendered with stable keys so values survive reruns. Generate only on button click; hide stale results after edits. Reset demo explicitly restores defaults.
+- Demo defaults are fixed October 10–17, 2026, with daily 18:00–20:00 availability. The expected baseline is 390 scheduled + 60 undated reading minutes unscheduled.
+- Streamlit 1.66.0 is the only new directly declared dependency, installed in `.venv`. No database, account login, domain, external API, calendar, or public deployment is included.
+- AppTest covers real widget interactions, retained values, adjusted minutes reaching the scheduler, invalid inputs/recovery, stale-result hiding, and warnings. Local HTTP/health checks passed; visual browser automation was unavailable.
+
 ## 14. Scheduling Constraints
 
 A valid schedule must satisfy the following requirements:
@@ -562,25 +575,54 @@ The project does not require a highly accurate machine-learning model or a produ
 
 ## 21. Current Status
 
+### November 4 update — Canvas import implemented, live verification pending
+
+- Read-only client, all-page course/assignment retrieval, safe failure reporting, and
+  explicit local Streamlit connection/import actions are implemented; 347 tests pass.
+- The student supplied the public Canvas site root `https://cilearn.csuci.edu`.
+  No live requests or real assignment inspection were performed by the agent.
+- `canvas_import.py` wraps the existing `Assignment` with student submission status
+  and a default-selection flag. This avoids changing estimator/scheduler models.
+- Preserve effective student `due_at` with date overrides enabled. Namespace IDs by
+  Canvas host, course ID, and assignment ID. Quiz/discussion mapping requires explicit
+  submission metadata; everything else uses the existing unknown-type fallback.
+- Course failures, invalid records, and duplicate IDs are reported as coverage gaps.
+  Successful courses remain inspectable; stale snapshots are cleared before refresh.
+- The local password form creates an in-memory client. No secret file, new dependency,
+  database, Canvas write, Google integration, or public deployment was introduced.
+- Scope now prioritizes the owner's local Canvas demonstration, followed by reviewed
+  Google Calendar export. The older SQLite-first sequence below is historical.
+
+The following paragraphs record prior checkpoints.
+
 As of October 19, 2026, milestone 1 is complete. `load_assignments(path: str | Path) -> list[Assignment]` reads UTF-8 JSON, preserves input order, converts ISO 8601 dates, and creates validated model objects. It requires a top-level list and object records. Required fields must be present; `due_at: null` is permitted. Omitted points/description use model defaults. Unknown fields are rejected by the constructor.
 
 Malformed JSON produces a ValueError with file and syntax location. Record errors produce ValueError with a one-based record number and relevant field. File-access errors propagate. Invalid records stop loading rather than silently returning a partial list. The synthetic sample contains quiz, essay, reading, and programming records; exactly one has no deadline or points.
 
-The initial estimator and DurationEstimate model are now implemented. All 79 cases pass: 36 model, 29 loader, and 14 estimator cases. Sample estimates are quiz 30, essay 180, reading 60, and programming 180 minutes. Scheduling representations are now implemented with 94 additional cases (173 total passing). As of October 20, step 5 adds the simplest working scheduler with 21 additional cases (194 total passing). It places, splits, and continues work, orders tasks by deadline/ID, enforces session and daily limits, and returns accounted remaining work. UI, persistence, and external integrations are not implemented. Step 6 now adds readable failure messages and the independent constraint audit: 219 total passing (97 scheduling-model and 43 scheduler cases, plus the original 79). Placement behavior is unchanged. Next: review step 6, then demonstrate the loaded/estimated/scheduled pipeline with fitting and overloaded workloads.
+The initial estimator and DurationEstimate model are now implemented. All 79 cases pass: 36 model, 29 loader, and 14 estimator cases. Sample estimates are quiz 30, essay 180, reading 60, and programming 180 minutes. Scheduling representations are now implemented with 94 additional cases (173 total passing). As of October 20, step 5 adds the simplest working scheduler with 21 additional cases (194 total passing). It places, splits, and continues work, orders tasks by deadline/ID, enforces session and daily limits, and returns accounted remaining work. At the step 5 checkpoint, UI, persistence, and external integrations were not implemented. Step 6 now adds readable failure messages and the independent constraint audit: 219 total passing (97 scheduling-model and 43 scheduler cases, plus the original 79). Placement behavior is unchanged. As of October 21, the first Streamlit interface is implemented (253 total passing: prior 219 + 20 weekly-availability + 14 interface cases). The user explicitly deferred the standalone pipeline demonstration to prioritize the meeting interface. The page connects loading, estimates, student minute adjustments, weekly expansion, and scheduling; persistence and external integrations remain deferred. Next: review the interface and rehearse the demo.
 
-Known limitations: existing mutable models can bypass construction validation; assignment loading still accepts NaN/infinite points and duplicate IDs (scheduling results reject duplicate task IDs); dependency versions are not pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
+Known limitations: existing mutable models can bypass construction validation; assignment loading still accepts NaN/infinite points and duplicate IDs (scheduling results reject duplicate task IDs); dependency versions are not fully pinned; deadlines in sample data are fixed and now past. These are documented follow-ups, not silently completed work.
 
 The earlier September-to-December schedule and proposed October 6-to-November 2 acceleration were planning targets, not completion evidence. The accelerated dates need reassessment against the actual checkpoint. Prioritize the tested sample-data MVP and final documentation; attempt optional integrations only after it is stable. Confirm final delivery date and local-versus-public deployment expectations with the professor.
 
 ## 22. Immediate Next Tasks
+
+Current next step: verify a real import locally with a replacement token entered only
+in the app. Review course access gaps, applicable deadlines, status labels, selections,
+and duration adjustments. Set current planning dates explicitly and rehearse a plan.
+Then design Google OAuth, a dedicated planner calendar, reviewed export with durable
+duplicate prevention, and reconciliation limited to planner-owned events. These are
+future milestones; defer database work, AI, feeds, multiuser login, and public hosting.
+
+Historical implementation sequence:
 
 1. Loading milestone committed as `8ffa2c4`.
 2. Estimate representation, validation, and tests completed; review the implementation.
 3. Base-duration rules, fallback, and explanations completed in `d63da55`.
 4. Availability, preferences, sessions, tasks, and accounted scheduling results completed.
 5. Simplest scheduler completed with incremental tests and explicit unscheduled-work reports.
-6. Failure messages and boundary/constraint audit completed; review, then demonstrate the complete pipeline with fitting and overloaded sample workloads.
-7. Add a Streamlit interface, weekly availability expansion, editable estimates, and warnings.
+6. Failure messages and boundary/constraint audit completed; standalone pipeline demonstration deferred at user request.
+7. First Streamlit interface, weekly availability expansion, editable minutes, and warnings completed; review and rehearse the local demonstration. (This is the interface step the user referred to as step 8.)
 8. Evaluate and document the core MVP before adding SQLite, Canvas, or Google Calendar.
 9. Collect completion-time observations for estimation evaluation; local LLM/regression experiments remain optional.
 10. Prepare the report, repeatable demonstration, and deployment appropriate to course requirements.

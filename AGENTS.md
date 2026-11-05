@@ -62,7 +62,7 @@ remaining milestones in the project plan, and dated outcomes in the journal.
 Record decisions separately from exploratory ideas. Update these documents at
 milestone boundaries when requested; do not rely on previous chat history alone.
 
-## Current checkpoint — October 20, 2026
+## Current checkpoint — November 4, 2026
 
 - Completed: validated `Assignment` dataclass, four synthetic JSON records,
   `load_assignments()`, and model/loader tests.
@@ -74,9 +74,16 @@ milestone boundaries when requested; do not rely on previous chat history alone.
   dated availability, daily limits, explicit remaining work (194 total passing cases).
 - Completed: step 6 failure messages and independent constraint audit
   (219 total passing cases).
-- Next: review step 6, then demonstrate the loaded/estimated/scheduled pipeline
-  with fitting and overloaded workloads before starting the interface.
-- No interface, database, or external integration exists yet.
+- Completed: first local Streamlit page, weekly availability expansion, session-local
+  duration adjustments, preferences, session tables, and warnings (253 passing cases).
+- Standalone pipeline demo deferred by user request; the page now connects the core modules.
+- Completed: read-only Canvas client, all-page retrieval, conversion, status display,
+  course/assignment selection, and explicit local import controls (347 passing cases).
+- Real Canvas import remains unverified. A token shared in chat must be revoked;
+  enter replacements privately in the local app. Never copy tokens into source or tools.
+- Next: verify the local real-data import and review scheduling with explicit current dates.
+- No database or Google Calendar integration exists yet. Prioritize the owner's local
+  Canvas demonstration, then reviewed Calendar export; database work is deferred.
 - Local Qwen/Ollama estimation was discussed only as a possible later comparison.
 - Use the project's `.venv`; avoid installing dependencies into Anaconda/global Python.
 - Run tests from the repository root with `.venv/bin/python -m pytest -v`.

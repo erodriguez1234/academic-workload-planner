@@ -1,5 +1,85 @@
 # Development Journal
 
+## November 4, 2026 — Canvas conversion and local import controls
+
+### Verified outcome
+
+- Preserved existing uncommitted interface/documentation work and the prior Canvas-client
+  increment. Baseline: 303 cases passed at commit `9a6ab8c` plus uncommitted changes.
+- Explained the conversion wrapper, conservative mapping, and explicit import actions first.
+  Wrote conversion tests before the new module and UI tests before the controls;
+  observed expected missing-module/control failures.
+- Added `canvas_import.py` and `canvas_ui.py`. Updated assignment requests to include
+  the current user's submission and explicitly apply deadline overrides.
+- Full suite: 347 passed using `.venv/bin/python -m pytest -v` (32 new conversion cases,
+  12 new UI cases). Sample mode still yields 390 scheduled + 60 unscheduled minutes.
+- Started Streamlit on loopback at port 8501 with telemetry disabled; health returned `ok`.
+  Socket binding required sandbox escalation. No live Canvas request or real-data inspection
+  was performed, so account compatibility and visual layout remain unverified.
+- No dependency, estimator/scheduler rule change, secret file, commit, or push.
+
+### Adopted decisions
+
+- Keep `Assignment` unchanged; a frozen wrapper carries status/default selection. IDs contain
+  host, course ID, and assignment ID so renaming titles/courses does not change identity.
+- Preserve effective `due_at`, not other students' `all_dates`; require timezone-aware dates.
+- Only explicit quiz/discussion submission types map to known estimator types. Others stay
+  unknown, retaining the provisional 90-minute fallback and editable planning minutes.
+- Show submitted/graded/pending-review/excused/unknown work unchecked, allow manual selection,
+  and select unsubmitted/redo-request work by default. Grades are not proof of completion.
+- Fetch only on Load courses / Import assignments. Report coverage gaps and retain valid work;
+  clear old snapshots before refresh and hide them after course/site changes.
+- Use a local password form and in-memory client. The user shared a token in chat; instructed
+  them to revoke it and enter a replacement locally. The exposed value was not used or saved.
+- Keep availability/preferences rendered during import: Streamlit can discard state for
+  widgets absent from a run. Keep fixed October sample defaults and explicitly prompt for real dates.
+
+### Python learning notes and next review
+
+- `@dataclass(frozen=True)` supplies a constructor for the metadata wrapper and prevents
+  ordinary reassignment of its fields; the wrapped existing Assignment remains mutable.
+- The service returns tuples of successful records and warnings, letting the UI report
+  partial course access without interpreting it as a complete import.
+- Mocks replace Canvas responses, while AppTest exercises actual selection and button flow.
+  Passing tests establish those contracts, not successful access to the student's account.
+- Next: the student connects privately at `https://cilearn.csuci.edu`, reviews real assignments,
+  and sets real planning dates. Google OAuth/export remains a separate future milestone.
+
+## October 21, 2026 — First local Streamlit interface completed
+
+### Verified outcome
+
+- Began at clean scheduler commit `9a6ab8c`; 219 baseline tests passed. Honored the user's request to defer the standalone pipeline-demonstration step and prioritize the interface for a meeting.
+- Explained the separation before implementation: weekly expansion module, Streamlit entry point, and interface tests; existing estimator/scheduler rules unchanged.
+- Wrote weekly-availability tests first and observed the expected missing-module failure. Implemented frozen weekly rules, timezone localization, and dated expansion; 20 cases passed.
+- Wrote two initial page tests first, observed missing-file failures, then built the assignment display/adjustment increment and passed both.
+- Added nine failing page cases for generation, settings, warnings, stale results, and errors, then implemented weekly controls, preferences, and scheduler calls. Added recovery, ambiguous planning time, and past-deadline checks. All 14 AppTest cases pass.
+- Full suite: 253 passing cases. Installed Streamlit 1.66.0 and required dependencies in the project `.venv`; pinned the direct dependency in requirements.txt. `pip check` reports no broken requirements.
+- Started the local app at http://127.0.0.1:8501. Outside sandbox restrictions, HTTP returned 200 and health returned `ok`. Browser automation could not initialize in this session; no visual-layout verification is claimed.
+- Updated README, plan/checkpoint, and personal notes. No commit or push performed.
+
+### Adopted decisions
+
+- Keep one page with assignment/estimate table, separate student minute inputs, sidebar preferences, weekly windows, generation button, session table, totals, and readable remainder warnings.
+- Default to a clearly labeled fixed October 10–17 demo horizon. Sample deadlines are unchanged. Defaults yield 390 scheduled and 60 unscheduled reading minutes because that assignment has no deadline.
+- Add `WeeklyAvailability(weekday, start_time, end_time)` and `expand_weekly_availability()` in availability.py. Dated `AvailabilityPeriod` inputs and the existing scheduler remain unchanged.
+- Expand inclusive horizons of 1–366 days, include overnight carry-in, clip both ends, and reject overlaps. The page offers one optional window per day. Earlier end means next day; equal times are rejected.
+- Use `localize_datetime()` with UTC round trips and fold offsets to reject ambiguous/nonexistent times. Do not silently choose a daylight-saving interpretation.
+- Use stable widget keys and session state; preserve original estimates separately from student overrides. Hide old output when inputs change and clear results when generation fails. Reset demo is an explicit callback that restores defaults.
+- Session memory covers normal interactions only; durable storage and persistence across refresh/reconnect/server restarts are not promised. No UI controls for database/API/calendar/AI features were added.
+
+### Python and Streamlit learning notes
+
+- Streamlit reruns the script after normal widget interactions. `st.session_state` holds named values across reruns; `setdefault` initializes a value only when its key is missing.
+- Widget `key` values connect controls to session state. Button callbacks run before the next script rendering, allowing Reset demo to update existing widget values safely.
+- The page calls `load_assignments()`, `estimate_duration()`, and `build_schedule()` directly. UI code prepares inputs and displays results; core estimation/scheduling rules stay independently testable.
+- A frozen weekly dataclass describes recurrence; expanding it over real dates produces the concrete objects the scheduler already accepts.
+- AppTest executes the actual page and lets pytest change widgets and click buttons without starting a browser. HTTP checks establish server availability, not visual correctness.
+
+### Next review
+
+Open the local URL and rehearse the documented meeting sequence. Review interface layout and feedback before expanding scope. Standalone demo packaging, persistence, Canvas, Google Calendar, richer availability controls, and prediction models remain future work.
+
 ## October 20, 2026 — Step 6 failure reporting and constraint audit completed
 
 ### Verified outcome
