@@ -16,3 +16,6 @@ htmlcov/
 .env.*
 !.env.example
 .DS_Store
+
+# Private local planner preferences (assignment IDs and adjusted minutes)
+.local/

@@ -208,3 +208,20 @@ def test_default_transport_blocks_redirects() -> None:
     handlers = [handler for handler in client._opener.handlers if isinstance(handler, HTTPRedirectHandler)]
     assert len(handlers) == 1
     assert handlers[0].redirect_request(Request(BASE_URL), None, 302, "Found", Message(), "https://elsewhere.example") is None
+
+
+@pytest.mark.parametrize("method,path,args", [("list_modules","/courses/42/modules",(42,)),("list_module_items","/courses/42/modules/3/items",(42,3))])
+def test_module_lists_fetch_every_page_read_only(transport, method, path, args):
+    next_url=BASE_URL+"/api/v1"+path+"?page=2"
+    transport.side_effect=[response([{"id":1}],f'<{next_url}>; rel="next"'),response([{"id":2}])]
+    result=getattr(CanvasClient(BASE_URL,TOKEN),method)(*args)
+    assert result==[{"id":1},{"id":2}]
+    assert transport.call_args_list[0].args[0].full_url==BASE_URL+"/api/v1"+path+"?per_page=100"
+    assert all(call.args[0].get_method()=="GET" for call in transport.call_args_list)
+
+
+@pytest.mark.parametrize("course,module",[(True,3),(0,3),(42,-1),(42,"3")])
+def test_invalid_module_identifiers_do_not_make_requests(transport,course,module):
+    with pytest.raises(ValueError):
+        CanvasClient(BASE_URL,TOKEN).list_module_items(course,module)
+    transport.assert_not_called()

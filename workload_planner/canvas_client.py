@@ -90,6 +90,16 @@ class CanvasClient:
             "&include%5B%5D=submission&override_assignment_dates=true",
         )
 
+    def list_modules(self, course_id: int) -> list[dict[str, object]]:
+        if type(course_id) is not int or course_id <= 0:
+            raise ValueError("course_id must be a positive integer")
+        return self._list_records(f"/courses/{course_id}/modules", f"modules for course {course_id}")
+
+    def list_module_items(self, course_id: int, module_id: int) -> list[dict[str, object]]:
+        if any(type(value) is not int or value <= 0 for value in (course_id, module_id)):
+            raise ValueError("course_id and module_id must be positive integers")
+        return self._list_records(f"/courses/{course_id}/modules/{module_id}/items", f"items for course {course_id}, module {module_id}")
+
     def _list_records(
         self, path: str, resource: str, extra_query: str = "",
     ) -> list[dict[str, object]]:

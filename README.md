@@ -104,6 +104,27 @@ The scheduling algorithm should:
 
 ## Project Status
 
+November 9, 2026 update: selected undated work can use a student-entered deadline or
+be planned after dated work associated with its confirmed week. Canvas modules can be
+mapped to week-start dates; Roll Call Attendance is excluded from workload imports.
+531 tests pass with synthetic data and mocked APIs.
+
+November 9, 2026 update: local reload preferences restore the last data mode, remembered
+Canvas connection/current classes, fresh assignment imports, and saved Google authorization.
+499 tests pass. Credentials remain in Keychain; approval and generated plans remain temporary.
+
+November 8, 2026 update: Google connection, calendar-aware scheduling, and reviewed
+study-session export are implemented. New sessions fit around Busy events in selected
+calendars. Export uses stable IDs and a private intent ledger to recover retries without
+duplicating sessions. Tests use synthetic responses; live verification remains a user action.
+Automatic moving/deletion and changed-schedule reconciliation remain deferred.
+
+November 7, 2026 update: selected Canvas assignments run through the existing estimator
+and scheduler with current, editable Canvas planning dates. Canvas duration edits survive
+re-imports and browser refreshes through private local preferences. All 401 tests pass;
+integration checks use synthetic Canvas responses rather than fetching private live data.
+Google Calendar export remains unimplemented. Earlier counts below are historical.
+
 November 4, 2026 update: the read-only Canvas client, assignment conversion,
 and local Streamlit import/selection flow are implemented. All 347 tests pass
 with synthetic responses; real-account import remains to be verified locally.
@@ -302,17 +323,55 @@ in the development session; review the rendered layout locally before the meetin
 
 1. Start the local app using the command in **Running the Project** and choose **Canvas**.
 2. Confirm the Canvas site root (default `https://cilearn.csuci.edu`).
-3. Enter your personal token privately in the password field and click **Load courses**.
-4. Select courses, then click **Import assignments**. These explicit actions make GET requests only.
+3. Enter your personal token privately in the password field. Optionally check
+   **Remember token on this Mac**, then click **Load courses**.
+4. Choose **Classes you’re taking this semester**, then click **Import assignments**.
+   Class IDs are saved locally. Canvas retrieval uses GET requests only.
 5. Inspect the full assignment table and import warnings, then choose **Assignments to schedule**.
-6. Enter your real planning dates and availability before generating a schedule. The initial
-   preferences still use the fixed October sample demo dates; they do not automatically track today.
-7. Use **Disconnect and clear Canvas data** to remove the connection and imported snapshot.
+6. Review your planning dates and availability before generating. Canvas starts at the next
+   whole minute in the student timezone with a 14-day inclusive horizon. **Use current dates**
+   updates that suggestion explicitly. Edit either date for your workload. Sample mode retains
+   the fixed October 10–17, 2026 demo; the two modes retain separate dates during the session.
+7. Use **Disconnect and clear Canvas data** to remove the active connection/imported snapshot.
+   Use **Forget saved token** to also delete this site's remembered token from macOS Keychain.
+
+The token-entry form hides once courses load successfully. Disconnecting restores
+an empty token field for reconnecting; failed connection attempts keep the form visible.
+
+Adjust **working minutes** before clicking **Generate schedule**. The original estimate stays
+visible. Canvas edits save automatically by stable assignment ID in
+`.local/duration_adjustments.json`, which Git ignores. This owner-readable/writable file holds
+only assignment IDs and integer minutes, not tokens, titles, descriptions, or imported records.
+Edits survive re-import, deselection, browser refresh, and server restart when the file remains
+available. Mode/current-class choices also survive reloads; planning dates, availability,
+assignment/session selections, generated results, and export approval remain session-local.
+Read/write problems produce a warning; in-memory edits still apply. Corrupt saved files are
+reported rather than silently overwritten. Sample minute edits remain session-local.
+
+Only selected assignments become scheduling tasks. Requested minutes always equal scheduled
+plus unscheduled minutes, including partially placed work. Missing/overdue deadlines and greedy
+shortfalls have explicit warnings. For example, the integration test requests 330 minutes,
+schedules 60, and reports the other 270 across the three reasons. The historical sample demo
+still produces 390 scheduled + 60 unscheduled minutes.
 
 Keep tokens out of chat, source files, screenshots, and Git. Revoke any token shared in chat
-and create a replacement. No secret file is required: the password field and client use
-session memory, with no application-level logging or disk persistence of credentials/imports.
-The form clears its input after submission. Server restart or session loss requires reconnecting.
+and create a replacement. By default the connection uses session memory only. Opt-in
+remembering uses macOS Keychain through `keyring==25.7.0`, outside Git; no credential file
+or plaintext fallback is created. The password field is never prefilled with a saved token.
+After a successful remembered connection, reloads reopen your last mode, reconnect Canvas,
+validate accessible classes, and import fresh assignments for saved classes once per browser
+session. Ordinary widget reruns do not repeat this work. Class choices are saved per Canvas
+site; inaccessible classes are warned about and skipped without silently erasing saved IDs.
+**Disconnect and clear Canvas data** disables automatic reconnect while keeping class choices.
+To resume again, leave the token blank and click **Load courses** using the saved Keychain token.
+macOS may ask you to allow Python to access Keychain. Tokens still expire/revoke in Canvas;
+enter a replacement and check Remember to update one. Saving occurs only after successful
+course retrieval. Storage errors leave the current successful connection usable.
+
+Deadline/session tables use month names and AM/PM (for example, **November 6, 2026
+11:59PM PST**). Deadlines are displayed in the selected student timezone; original
+timestamps and scheduling calculations remain unchanged. Date pickers use MM/DD/YYYY
+and time controls use 12-hour AM/PM.
 
 The importer requests every page for selected courses and reports failed courses, malformed
 records, and duplicate IDs. Coverage means assignments accessible through the Canvas assignment
@@ -334,9 +393,162 @@ Canvas lock/unlock restrictions are not additional scheduling constraints in thi
 `canvas_client.py` handles HTTP, `canvas_import.py` handles conversion/import reports, and
 `canvas_ui.py` handles Streamlit controls. Estimator and scheduler rules are unchanged.
 Tests cover synthetic responses and AppTest interactions; live data and visual layout remain
-for local review. Sample-data mode remains available. Google Calendar export is not implemented.
+for local review. Sample-data mode remains available; reviewed Google export is described below.
 
-## Credential Handling
+## Planning Assignments Without Deadlines
+
+Selected assignments without a Canvas deadline appear in **Review assignments with no
+deadline**. The import table continues to show **No deadline**; your choices do not change
+Canvas or the original Assignment object.
+
+- **Manual deadline:** enter a date/time in the selected student timezone. This is a student
+  planning deadline and takes normal deadline priority. A later real Canvas deadline wins.
+- **After dated work (choose week):** choose a date in the assignment's reference week.
+- **After dated work (module week):** first click **Load module placement from Canvas**.
+  Confirm a Monday week-start date for the relevant module, then select the assignment's
+  intended module. Multiple module memberships require your choice; names such as Module 3
+  and unlock dates are not treated as due dates or reliable calendar-week numbers.
+- **Choose how to plan:** leave unresolved work unscheduled with every minute accounted for.
+  A selected module-based option with missing/unverified mapping blocks generation until
+  reviewed; choose another option if module access is unavailable.
+
+Week-based work has no invented Sunday due date. The planner reserves time for all selected
+work with real/manual deadlines first. For each reference week, it then waits until the last
+dated-work day and the end of its reserved sessions before placing undated work. Confirmed
+module weeks group dated work where possible; otherwise the actual due-date week is used.
+For Monday/Tuesday/Wednesday deadlines, undated work starts Wednesday or later. If related
+dated work remains unscheduled, that week’s undated work waits too. It may spill into later
+weeks up to the entered planning horizon; extend that horizon if needed. Busy time, retained
+bookings, daily/session limits, and exact minute accounting apply across both priority passes.
+Existing bookings incompatible with a new priority choice require review, not automatic moves.
+
+Canvas planning choices and module weeks are saved by stable IDs in ignored owner-only
+`.local/planner_preferences.json`; there are no assignment titles/descriptions or credentials
+in that file. Configured module-based choices refresh module membership during re-import.
+Otherwise module lookup is an explicit read-only action. Module/item retrieval fetches all
+pages and reports access gaps. Direct assignment links and explicitly matched quiz/discussion
+IDs are supported; ambiguous/unavailable links require a manual week/deadline. Normal API
+access limitations still apply. Sample choices remain temporary, preserving the historical
+390 scheduled + 60 unscheduled demonstration until you explicitly choose a reading target.
+
+Exact **Roll Call Attendance** (also **Roll Call Attendence**) titles are excluded from import
+rows and scheduling choices, ignoring case and extra whitespace. Other attendance-related
+assignments remain visible. Re-import or reload to remove an existing snapshot's Roll Call row.
+This filter does not delete any Canvas assignment or existing Google event.
+
+## Connecting Google Calendar Locally
+
+Developer setup: enable the Calendar API in your Cloud project, configure an External
+OAuth app in Testing with your account(s) as test users, and create a Desktop OAuth client.
+Keep its downloaded JSON at `.local/google_oauth_client.json`. This folder is ignored by Git.
+Do not paste the file, tokens, or callback URLs into chat or commit them.
+
+In Streamlit, expand **Google Calendar** in the sidebar:
+
+1. Click **Connect Google Calendar**. If saved authorization is available, the app reuses
+   or refreshes it. Otherwise Google's page opens in the Mac's default browser; choose
+   the intended Google account and approve access within two minutes.
+2. Return to the planner. macOS may request permission to store/access credentials in Keychain.
+3. Review the calendar name and student timezone, then explicitly click **Create planner calendar**.
+   This creates a secondary calendar named **Academic Workload Planner** in the account you chose.
+4. Use **Check planner calendar access** to verify it. Reconnecting normally reuses its saved ID.
+5. **Disconnect Google Calendar** clears the connection and disables automatic reconnect. **Forget saved Google
+   authorization** also removes the local Keychain record; it does not revoke Google's consent
+   or delete calendars. Consent can be revoked in Google Account settings.
+
+The flow requests `calendar.app.created`, `calendar.calendarlist.readonly`,
+`calendar.events.freebusy`, and basic `openid` identity. Calendar-list access supplies names
+and IDs; free/busy supplies occupied intervals without personal event titles/descriptions.
+Event reads/writes are restricted in code to the dedicated planner calendar. A verified Google subject ID binds calendar
+metadata to the account: **Authorize Google again** retains the dedicated calendar for the
+same account, while a different account starts without a selected calendar. Forgetting the
+Keychain record removes that local association, so check for an existing calendar before
+creating another. This is a local, single-account-at-a-time demonstration, not hosted OAuth.
+
+The Google authentication SDK handles state/PKCE and the loopback callback. Tokens, identity,
+calendar ID, and an ownership marker stay in macOS Keychain; no `token.json` is written. The
+downloaded client JSON is restricted to owner read/write permissions. Callback and token-exchange
+logging is suppressed. After a successful connection, reloads restore saved authorization
+and refresh expired access when possible, without opening a sign-in window. Missing/revoked
+consent requires an explicit Connect/Authorize action; failed automatic restoration is attempted
+only once per browser session. Calendar creation and event export still require explicit actions.
+
+Expired access credentials refresh automatically when possible. If renewal fails, the app gives
+a reconnection message. Google can require a new sign-in if access is revoked or a testing refresh
+token expires; External/Testing applications using Calendar access commonly require reauthorization
+after seven days. School policy can also block consent. No trial or paid hosting is introduced.
+
+Calendar creation is never automatically retried. A pending marker is saved before the request.
+If its outcome is uncertain, the app blocks another creation and offers **Recover planner calendar**:
+copy that calendar's ID from Google Calendar settings → Integrate calendar. Recovery requires the
+matching ownership marker; unrelated calendars are rejected. Calendar creation is separate
+from the reviewed session export below. No calendar/event deletion or automatic reconciliation is implemented.
+
+## Remembering Your Local Setup
+
+This is a single-user Mac demonstration. `.local/planner_preferences.json` is ignored by Git
+and written atomically with owner-only permissions. It holds the last assignment source,
+Canvas site/current class IDs, and connection-resume flags—not credentials or assignment content.
+The server reads these choices after reload/restart; no database or browser cookie is needed.
+Damaged/unreadable preferences are reported and not overwritten. Credentials must remain in
+Keychain, and the Canvas token must still be valid. Disconnect disables the corresponding
+resume flag; Forget additionally removes saved credentials. There is no automatic login flow,
+calendar creation, generation, or event export on reload.
+
+For an existing installation, connect each service once after this update to enable resume.
+Canvas can use a blank field to load an already remembered token. Select your semester classes
+once. Google normally reuses saved authorization, without another consent screen unless needed.
+You can still switch to the historical sample demonstration at any time.
+
+## Scheduling Around Existing Calendar Events and Exporting
+
+If you authorized an earlier version, open **Google Auth Platform → Data Access** in your
+Cloud project and add these scopes alongside the existing app-created-calendar scope:
+
+- `https://www.googleapis.com/auth/calendar.calendarlist.readonly`
+- `https://www.googleapis.com/auth/calendar.events.freebusy`
+
+Keep the intended accounts as test users. In the planner, click **Authorize Google again**
+and approve the updated permissions. Using the same account retains its planner calendar.
+Older saved credentials are rejected rather than treated as if they granted new access.
+
+1. In Canvas mode, **Avoid Google Calendar busy times** defaults on. Check your explicit
+   planning dates, duration adjustments, weekly availability, timezone, and study limits.
+2. Primary and planner calendars are always checked. Click **Load other calendars** and
+   select any additional calendars whose events should block study time. Unselected calendars
+   are not checked. Normal events marked **Free** do not block; Busy recurring/all-day events do.
+3. Click **Generate schedule** to read current busy intervals and fit new study sessions into
+   your entered availability. Failed/incomplete calendar reads stop generation. This reads
+   calendars without changing them. Requested minutes equal booked + proposed + unscheduled.
+4. Select individual proposed sessions, click **Preview selected sessions**, review statuses,
+   check the approval box, and click **Export approved sessions**. Preview does not write Google
+   events. Export rechecks busy time and skips conflicts, past sessions, and changed events.
+   Changed account, calendars, planning inputs, or selected sessions require fresh review.
+5. Check the per-session export results. For timeout/restart recovery, use **Review unfinished
+   exports**, preview the recorded attempt, and approve ready retries. Matching existing events
+   are recognized without another insert. No background retry runs on refresh.
+
+The app writes only to its ownership-marked planner calendar, with no attendees, default
+reminders, updates, or deletes. Event IDs are deterministic for account/calendar, assignment,
+and UTC interval. Private event metadata identifies app ownership. The owner-only, atomically
+replaced `.local/calendar_exports.json` stores IDs, intervals, assignment IDs, and attempt
+states; it contains no tokens or titles. Keep this ignored file for recovery across restarts.
+An unreadable ledger blocks export and is not overwritten.
+
+On regeneration, verified future planner bookings remain fixed and count toward assignment
+minutes and daily study capacity, including bookings outside the new horizon. Only the remainder
+is scheduled. Existing bookings that were moved, deleted, exceed adjusted minutes, or no longer
+fit the deadline can block replanning for review. Automatic reconciliation is a later milestone;
+this step never shifts an existing event. Past bookings are not evidence of completed work:
+review remaining assignment minutes yourself. Existing conflicts involving retained bookings
+also require manual review. There is no atomic Google free/busy-and-insert transaction, so an
+external change during export can still introduce a race despite immediate rechecks.
+
+Sample mode keeps October 10–17, 2026 and defaults calendar checks off. Past demo sessions
+cannot be exported. Google Tasks, automatic schedule reconciliation, and public hosting remain
+outside this step. No new dependency was needed.
+
+## Private Data
 
 The application may handle private academic and calendar information. Credentials and sensitive student data must not be committed to the repository.
 

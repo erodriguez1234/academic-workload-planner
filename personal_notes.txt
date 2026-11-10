@@ -314,3 +314,32 @@ Start the browser app from the project root:
 
 Run all tests from the project root:
     .venv/bin/python -m pytest -v
+
+Calendar planning and export (November 8)
+
+calendar_planning.py: BusyPeriod accepts timezone-aware busy intervals. subtract_busy()
+    clips these out of study availability in UTC; build_calendar_schedule() credits
+    existing future bookings and passes remaining work to the original scheduler.
+calendar_export.py: frozen dataclasses hold preview snapshots. Stable UUID-derived IDs
+    identify each account/assignment/interval across retries. ExportLedger records intent
+    before sending an event, so a timeout can be recovered after restarting the app.
+    A lock prevents two exports in this process from running together. Google still has
+    no atomic busy-check-and-insert operation. Existing events are never moved/deleted.
+calendar_export_ui.py: selection -> preview -> approval -> export. Streamlit reruns the
+    page after each interaction; immutable preview context detects changed selections.
+
+local_preferences.py: validated, owner-only JSON stores last source, Canvas site/class IDs,
+    and resume flags. A temporary complete file replaces the prior file atomically.
+resume_ui.py: bridges local preferences to Streamlit session state. Widget callbacks save
+    class changes. Credentials stay in Keychain; schedules/approval are not serialized.
+google_auth.connect_google(allow_interactive=False): reuse or renew saved credentials but
+    never open a browser if sign-in is needed. UI attempts restoration once per new session.
+
+deadline_planning.py: DeadlineChoice stores a student planning choice. resolve_tasks()
+    leaves original Assignment deadlines untouched. build_reviewed_schedule() reserves
+    dated work first, then places week-based work after its related dated-work day/sessions.
+    The planning horizon is a cutoff, not an invented professor due date.
+canvas_modules.py: joins explicit module item IDs to imported assignment metadata. A quiz
+    ID differs from its assignment ID. Multiple modules require student selection.
+deadline_ui.py: prompts for manual deadline or confirmed week, saves Canvas choices,
+    and maps module IDs to Monday dates. No Canvas writes or automatic title-based guesses.

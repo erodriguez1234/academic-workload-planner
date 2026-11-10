@@ -1,5 +1,208 @@
 # Development Journal
 
+## November 9, 2026 — Undated assignments, weekly priority, and Roll Call filtering
+
+- Read continuity docs/source/Git/requirements/ignore rules. Baseline: 498 passed plus one
+  stale label assertion, caused by the user's intentional Select Classes to Import edit.
+  Preserved that label and updated the test; preserved all other uncommitted changes.
+- Explained increments before implementation and wrote failing tests first. Added exact
+  normalized Roll Call Attendance/Attendence exclusion before conversion; no rows/selection
+  or estimated workload for that administrative record. No broad attendance-title filtering.
+- Initial proposal used a Sunday target. User clarified that undated work should be last
+  relative to dated work for the reference week and approved explicit module week-start
+  mapping. Revised tests/implementation accordingly; no Sunday deadline is inferred.
+- Separate deadline_planning resolves student targets without mutating Assignment/Canvas
+  due dates. Manual targets take normal priority. Week targets use the entered horizon as
+  a planning cutoff, reserve dated work first, and wait until the last related dated-work
+  day/session. They can spill into later weeks. Unplaced related dated work keeps them waiting.
+- Related work uses confirmed module-week mapping where unambiguous, otherwise due-date week.
+  Unreviewed undated work remains reported, and does not block reviewed weekly work.
+  Original estimator/scheduler unchanged; planning composes the tested calendar adapter.
+- Separate canvas_modules reads all module/item pages and preserves multiple memberships.
+  Direct assignment and explicit quiz/discussion IDs only; no guessing from names, unlock
+  dates, or matching quiz IDs to assignment IDs. Access/malformed metadata gaps warn.
+- Streamlit prompts per selected undated assignment, supports date/time or reference week,
+  and lets students load/map modules to Mondays. Missing selected module mappings block
+  generation. Configured module choices refresh membership on subsequent imports/reloads.
+- Canvas choices/module weeks persist in owner-only ignored local preferences. Source data,
+  labels, sample dates, Google preview/approval, and credential storage are preserved. New
+  Canvas deadlines take precedence; incompatible already-booked sessions require review.
+- Full suite: 531 passed with .venv/bin/python -m pytest -v; git diff --check clean.
+  New tests cover exact Roll Call filtering, all-page module reads, invalid IDs, access gaps,
+  quiz link identity, multiple modules, manual target persistence, module mapping/reload,
+  missing mapping, Wednesday ordering/spillover, waiting work, and busy/booked minute totals.
+- Agent verification used synthetic data and mocked APIs/Keychain only. No live private API
+  retrieval, Canvas write, calendar write, commit, or push. No dependency/database added.
+- Python notes: frozen DeadlineChoice carries immutable user choices; resolve_tasks creates
+  scheduling inputs rather than assigning a new value to Assignment.due_at. Composition
+  reuses existing schedulers in stages, subtracting earlier sessions and their daily minutes
+  before scheduling lower-priority work. Stable IDs reconnect preferences after imports.
+- Next: user rehearsal of manual targets, known module-week mapping, and a dated/undated
+  mix around calendar events; reconciliation remains a later scoped step.
+
+## November 9, 2026 — Resume local connections and current classes after reload
+
+- Read continuity docs/source/status and ran baseline: 484 passed. Preserved existing
+  uncommitted work. User authorized automatic restoration instead of repeating manual imports.
+- Explained separate preference storage and noninteractive restoration before implementation.
+  Added tests first and observed missing-module failures, then implemented local_preferences
+  and resume_ui. Preferences use an allowlist, validation, atomic replacement, and mode 0600.
+- Remember assignment-source mode, Canvas site/current-class IDs, and resume flags only.
+  No tokens, course names, assignments, generated schedules, or approval snapshots in the file.
+- Rename course selector Classes you’re taking this semester. Save choices on user changes;
+  restore only accessible IDs; report unavailable saved classes without erasing them. Reload
+  refetches current assignments once per browser session, with no repeated reads on widget reruns.
+- Successful saved-token Canvas connection enables resume. Google successful connection enables
+  resume through Keychain reuse/refresh with allow_interactive=False. Missing credentials never
+  open browser login during reload. Disconnect disables resume; Forget also removes credentials.
+- Existing installations connect once to enable the new flags. Tokens and consent still expire.
+  No automatic generation, calendar creation, or event export. No new dependency or database.
+- Updated the previous refresh test: refresh now connects automatically; token fields remain
+  absent when connected and are never prefilled. New test isolation prevents real preference
+  reads/writes across the entire suite. All API/Keychain behavior was mocked; no live reads.
+- Full suite: 499 passed with .venv/bin/python -m pytest -v. Tests include owner-only storage,
+  unknown/secret-field rejection, malformed-file preservation, fresh-page mode/classes/import,
+  unavailable classes, missing tokens, disconnect across reloads, silent Google restoration,
+  expired-authorization handling, and no automatic browser flow. Original demo/export tests pass.
+- Python note: session_state lasts for one Streamlit browser session; a JSON file survives a
+  reload/server restart. A widget on_change callback saves user choices before rerendering.
+  The import alias saved_preferences avoids colliding with the scheduling preferences variable.
+- No commit or push. Next: user reload rehearsal on their Mac; automatic reconciliation
+  remains a separate milestone.
+
+## November 8, 2026 — Reviewed export and planning around Calendar events
+
+- User reported connection setup working and requested scheduling around existing normal
+  Calendar events (Google Tasks excluded). Baseline: 444 passing cases. Preserved prior
+  uncommitted work; no commit or push requested.
+- Explained the pure planning adapter, export service, and explicit UI actions before each
+  increment. Added mocked tests first, observed failures, then implemented behavior.
+- Calendar availability reads primary/planner plus selected extras. Fetch every calendar-list
+  and planner-event page; incomplete/denied free/busy results block generation/export.
+  Calendar names/IDs and busy intervals use new calendar.calendarlist.readonly and
+  calendar.events.freebusy scopes. Old stored scopes require explicit reauthorization;
+  never override an old token's scope list with the newly requested permissions.
+- Busy subtraction uses UTC elapsed intervals, rounds inward to whole-minute study slots,
+  and preserves local daily caps. Verified future planner bookings count toward assignment
+  and daily minutes. The original estimator and scheduler were left unchanged.
+- A test caught pre-start availability consuming daily capacity in the adapter; clipped
+  before budgeting. Clock-change and subminute tests verify conservative time handling.
+- Session selection -> preview -> approval -> export. Changing selections/account/calendars
+  invalidates review. Recheck ownership and busy times immediately before insertion.
+- Deterministic UUID-derived event IDs plus private ownership metadata identify retries.
+  Owner-only atomic .local/calendar_exports.json records intent before each write and
+  completion/uncertainty afterward. No tokens, course names, or assignment titles stored.
+- Stop after uncertain/failed writes; report every approved session as exported/already
+  present/conflict/failed/uncertain/not attempted. Explicit unfinished-export recovery
+  reuses the original ID; verified existing events resolve uncertain local receipts.
+- Only inserts into the marker-checked dedicated calendar. No event/calendar deletion,
+  updates, attendees, notifications, automatic reconciliation, database, or new dependency.
+- Full suite: 484 passed with .venv/bin/python -m pytest -v; git diff --check clean.
+  Tests cover interval clipping, minute accounting, daily budgets, scopes, pagination,
+  busy-read failures, approval invalidation, partial failures, HTTP 409, retry/restart,
+  malformed metadata, and actual Streamlit planning/export/regeneration using mocks.
+- Agent made no live calendar reads or writes. Local server restarted for user review.
+  User must approve new consent and exercise live behavior privately in the app.
+- Limits: only selected calendars checked; existing bookings remain fixed (including
+  outside a new horizon); manually changed/deleted/over-budget bookings require review.
+  Past bookings do not prove work completed. Retained-booking conflicts need manual review.
+  Google has no atomic free/busy-and-insert transaction, so external-change races remain.
+- Python notes: frozen dataclasses make preview snapshots immutable; tuple context detects
+  changed review inputs. A generator yields per-local-day pieces without building a list.
+  A write-ahead record means save intent before calling Google; stable IDs let retries ask
+  whether that same event already exists instead of blindly making another event.
+- Next: user rehearsal with the new consent, current dates, a known Busy event, a small
+  approved export, regeneration, and retry/restart. Reconciliation is a later scoped step.
+
+## November 8, 2026 — Local Google connection and calendar setup
+
+- Read continuity docs/source/status; baseline 401 cases passed. Preserved existing
+  uncommitted Canvas, display, Keychain, and scheduling-interface changes.
+- User placed a Desktop OAuth client JSON in ignored `.local/`. Validated its shape and
+  official endpoint configuration without printing fields; set that file to mode 0600.
+- Explained and separated Google authentication, calendar REST, and UI modules before
+  implementation. Wrote mocked tests first and observed missing-module failures.
+- Added google-auth 2.62.1 and google-auth-oauthlib 1.5.0 in `.venv`. Direct Calendar REST
+  calls use the SDK's AuthorizedSession; no additional Calendar SDK was needed.
+- Local consent uses the default browser, loopback-only random port, state/PKCE, a two-minute
+  callback timeout, and bounded network requests. SDK callback/token logging is disabled.
+- Keychain stores the authorization envelope: renewable credentials, verified Google subject,
+  selected calendar ID, and creation ownership/pending markers. No token file or browser-field
+  prefill. Same-account reauthorization preserves metadata; different accounts do not inherit it.
+- Explicit Create planner calendar uses calendar.app.created; OpenID supplies only the identity
+  comparison needed for safe reconnection. No calendar listing or event reads/writes implemented.
+- Save a pending marker before creation. Uncertain remote failure blocks automatic retries;
+  marker-checked recovery uses an ID from Google Calendar settings. Final storage failure keeps
+  the returned ID in memory so another click doesn't issue another insert.
+- Tests cover auth reuse/refresh, revocation, identity verification, scoped permission denial,
+  invalid configuration/state, safe errors, creation/access/recovery, and explicit UI actions.
+  Offline real-SDK checks cover credential serialization and generated state/PKCE parameters.
+- Full suite: 444 passed using `.venv/bin/python -m pytest -v`; pip check found no broken
+  requirements. These establish tested contracts, not live Google-account approval.
+- No real Google login, token read, calendar creation, event export, commit, or push performed
+  by the agent. User must exercise first live consent and calendar access in the local app.
+- Python notes: repr=False prevents dataclass fields from appearing in ordinary object output;
+  partial supplies bounded timeout defaults. The existing Keychain layer is extended for a
+  separate Google service entry rather than mixing Google credentials with Canvas tokens.
+- Next: local live verification, then the separate reviewed/deduplicated event-export milestone.
+
+## November 7, 2026 — Step 3 Canvas scheduling completed in code and tests
+
+- Baseline: 383 passed. Preserved the existing uncommitted formatting/Keychain/interface
+  work and verified that Canvas selections already flowed into estimator and scheduler.
+- Explained two remaining gaps before implementation: historical dates in Canvas mode
+  and widget-owned duration edits lost after deselection or new browser sessions.
+- Wrote tests first and observed missing-module/input-recovery failures. Added a current
+  planning-date helper, per-source editable date profiles, independent in-memory overrides,
+  and a small local duration-preference store. Added `.local/` to ignore rules first.
+- Canvas suggests next-minute local start plus a 14-day inclusive horizon. Its dates don't
+  overwrite the historical sample demo. Explicit Use current dates preserves minute edits;
+  invalid timezone input remains recoverable. Scheduler still uses only explicit inputs.
+- Save only Canvas IDs and minute values; use a 0600 atomic replacement file. Preserve
+  unrelated edits when merging. Missing files mean no overrides; malformed files are reported
+  and not overwritten. Tests use temporary files, not the student's preferences.
+- End-to-end AppTest imports synthetic Canvas records, estimates unknown types, applies a
+  150-minute adjustment, and generates 60 scheduled + 270 unscheduled = 330 requested minutes.
+  Every task is accounted independently; all three warning reasons and the existing constraint
+  audit are exercised. Re-import, deselection, fresh session, and save failure are covered.
+- Full suite: 401 passed using `.venv/bin/python -m pytest -v`. The historical sample still
+  produces 390 scheduled + 60 undated minutes. No estimator/scheduler changes or dependency added.
+- No private live API request, token access, commit, or push performed. Code/test completion
+  is distinct from inspecting a real-account generated plan in the browser.
+- Python notes: a widget callback runs before the next render and copies edited minutes into
+  independent state. A stable ID reconnects saved minutes to a re-imported assignment. Atomic
+  replacement writes a complete temporary file before swapping it into place, avoiding a
+  half-written preferences file if writing fails.
+- Next: review real-account output locally, then start the separate reviewed Calendar milestone.
+
+## November 5, 2026 — Readable deadlines and optional remembered Canvas token
+
+- Preserved the uncommitted date/time formatting changes. Baseline: 356 passing cases.
+  The user's screenshot showed a real import rendered with the older ISO date format;
+  current-source tests confirm both Canvas tables use the shared formatter.
+- Added an exact screenshot-boundary test using synthetic data: November 7 at 07:59 UTC
+  displays as November 6, 2026 11:59PM PST. Midnight, noon, daylight-saving labels,
+  missing deadlines, and original timestamp preservation remain covered.
+- Explained the one new dependency before implementation: `keyring==25.7.0`, installed
+  only in `.venv`, provides native macOS Keychain storage. `credentials.py` isolates
+  storage from HTTP/conversion/UI and explicitly selects the native macOS backend.
+- Wrote mocked storage and fresh-session UI tests before implementation. Opt-in Save
+  occurs after successful course retrieval; blank-token Load courses reads only that
+  site's token. Forget deletes that entry and clears the active connection/import.
+- Tokens never prefill widgets, appear in logs, or enter project files. Storage failures
+  are sanitized and don't discard an otherwise successful in-memory connection. Tests
+  cover opt-in behavior, expiry feedback, manual-token bypass, failure handling, and
+  separate site keys without reading or writing actual Keychain credentials.
+- Full suite: 376 passed using `.venv/bin/python -m pytest -v`; pip check found no broken
+  requirements. No estimator/scheduler change, database, automatic refresh fetch,
+  credential migration from chat, commit, or push.
+- Python notes: a small wrapper translates backend exceptions into safe messages;
+  `raise ... from None` suppresses potentially sensitive backend traceback details.
+  A dictionary-backed fake simulates persistent storage across fresh Streamlit sessions.
+- Next local review: opt in once with a replacement token in the app, allow macOS Keychain
+  access if prompted, then refresh and connect with the field blank. Expiration still
+  requires a replacement token; remembering does not renew it.
+
 ## November 4, 2026 — Canvas conversion and local import controls
 
 ### Verified outcome

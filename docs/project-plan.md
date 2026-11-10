@@ -575,6 +575,119 @@ The project does not require a highly accurate machine-learning model or a produ
 
 ## 21. Current Status
 
+### November 9 update — undated workload review and module-week tracking
+
+- 531 tests pass. Exact normalized Roll Call Attendance/Attendence is filtered from Canvas
+  workload import; other attendance-related work remains. The student's Select Classes to
+  Import label is preserved; updated its stale test expectation.
+- DeadlineChoice and resolve_tasks build separate scheduling inputs: real Canvas due dates
+  win, student deadlines are explicit, and week-based assumptions use the planning horizon
+  as a cutoff rather than inventing a Sunday due date. Originals remain unchanged.
+- User clarified that end of week means last relative to dated work, not a Sunday cutoff.
+  Reserve all dated work first. Weekly work waits until the latest related dated-work day
+  and session end, can spill into later weeks, and waits when related dated work is unplaced.
+  Confirmed module mappings define related work where possible; otherwise use due-date week.
+- Pure build_reviewed_schedule composes existing calendar/core scheduling stages, preserving
+  daily/session capacity, external busy periods, retained bookings, and minute accounting.
+  Core estimator/scheduler algorithms are unchanged; priority lives in the planning adapter.
+- Paginated read-only module/item methods, separate canvas_modules conversion, explicit
+  first lookup, per-module Monday mapping, and reviewed assignment module selection. Direct
+  assignment and explicit quiz/discussion ID links only; no title/date guessing. Gaps warn.
+- Canvas choices/module weeks persist in ignored owner-only preferences. Re-import refreshes
+  membership for configured module choices. Missing/ambiguous mappings require review.
+  New real Canvas dates override saved student targets. No database/dependency added.
+- Verification used mocks/synthetic records only. Existing calendar reconciliation remains
+  separate; no Canvas writes, automatic calendar moves/deletes, commit, or push.
+
+
+### November 9 update — local connection and current-class restoration
+
+- 499 passing tests. Separate local_preferences storage and resume_ui helpers persist only
+  mode, Canvas site/current class IDs, and per-service resume flags in ignored owner-only JSON.
+- Remembered Canvas connections restore accessible courses and freshly import saved classes
+  once per browser session. Inaccessible selections are reported; course choices remain
+  editable and site-specific. No private course/assignment snapshot is written to disk.
+- Google restoration reuses/refreshes Keychain authorization with allow_interactive=False;
+  no automatic browser login, calendar creation, export, or retry loop. Disconnect disables
+  the service's resume flag, while keeping class selections. Forget also removes credentials.
+- Existing installations connect once to enable resume; no startup credential migration.
+  Generated schedules, assignment/session selections, and export approval stay temporary.
+- Tests use temporary preferences, synthetic records, and mocked Keychain/API calls. No new
+  dependency, database, estimator/scheduler changes, or live private API calls by the agent.
+
+
+### November 8 update — reviewed export and calendar-aware planning
+
+- User requested existing-event conflict avoidance now and confirmed normal Calendar events,
+  not Google Tasks. Calendar-aware planning wraps the unchanged estimator/core scheduler.
+- Separate calendar_planning (pure interval/accounting logic), calendar_export (intent ledger,
+  ownership, preview/write/recovery), and calendar_export_ui modules. No new dependency.
+- Read calendar names/IDs with calendar.calendarlist.readonly and occupied intervals with
+  calendar.events.freebusy. Reauthorize old consent explicitly. Selected-calendar failures
+  block planning/export; all pages and per-calendar free/busy errors are checked.
+- Subtract busy intervals conservatively at minute boundaries. Preserve verified future
+  planner bookings and account for them against requested minutes and local daily capacity.
+  Keep every requested minute as booked/proposed/remaining. Historical sample dates remain.
+- Explicit session selection, read-only remote preview, approval, and immediate conflict
+  rechecks precede writes to the dedicated ownership-marked calendar. Stable UUID-derived
+  event IDs plus an owner-only atomic local intent ledger protect retries and restarts.
+- Failed/uncertain/not-attempted results remain visible; explicit recovery reuses recorded
+  IDs. Never update/delete events, notify attendees, or silently replace changed bookings.
+- Limits: selected calendars only; Free events do not block. No atomic Google check/insert
+  transaction; races remain possible. Changed existing bookings and conflicts involving
+  retained bookings require manual review. Automatic reconciliation is deferred.
+- Full suite: 484 passing cases. All agent verification is offline with mocked
+  HTTP/OAuth/Keychain and synthetic data;
+  the user must review live account behavior locally. No private API request or event write
+  was performed by the agent. No commit or push requested.
+
+
+### November 8 update — step 4 Google connection implemented, live check pending
+
+- Full suite: 444 passing cases; pip check reports no broken requirements.
+- Local Desktop OAuth opens Google's browser page on explicit action. Keychain stores
+  renewable credentials and dedicated-calendar metadata. Saved access is reused/refreshed;
+  expired/revoked authorization has an explicit reauthorization action.
+- Request only calendar.app.created plus OpenID identity. Verify Google's ID token and
+  compare the subject before reusing calendar metadata on fresh authorization. Same-account
+  reconnection preserves the calendar; switching accounts starts with no selected calendar.
+- Separate Google authentication, calendar REST, and Streamlit modules. No event methods,
+  broad calendar-list access, existing-event conflict avoidance, or public hosting were added.
+- Calendar creation is explicit. Save a pending marker first, preserve the resulting ID,
+  and block uncertain retries. Recovery checks a saved ownership marker before selecting
+  an existing calendar. Definite permission rejection allows a later corrected attempt.
+- Tests use synthetic credentials, mocked OAuth/HTTP/Keychain, and offline SDK checks.
+  First real account authorization and calendar creation remain to be exercised locally.
+
+### November 7 update — step 3 scheduling from Canvas imports
+
+- Selected Canvas assignments feed the existing estimator, separate duration overrides,
+  and unchanged scheduler. Integration tests verify sessions, warnings, and exact per-task
+  accounting with submitted work excluded unless explicitly selected. 401 cases pass.
+- Canvas starts with an editable next-minute local planning start and a 14-day inclusive
+  horizon; Use current dates updates it explicitly. Sample dates remain October 10–17, 2026.
+  Date edits are retained separately for each source during the session.
+- Canvas duration edits are saved by stable ID in an owner-only, atomically replaced JSON
+  file under ignored `.local/`. UI memory also retains edits when widgets disappear.
+  Read/write failures warn rather than preventing an in-memory plan. No full database,
+  new dependency, scheduling change, or private live API retrieval was introduced.
+- Agent verification uses mocked Canvas responses with the actual estimator/scheduler
+  and the independent constraint audit. The student's real-account run remains a local
+  demonstration check; no live-account success is claimed from synthetic tests alone.
+
+### November 5 update — readable dates and optional local token persistence
+
+- 376 tests pass. All deadline/session tables use the shared display formatter;
+  date/time controls use MM/DD/YYYY and AM/PM. Source timestamps remain unchanged.
+- The user supplied a screenshot of a real Canvas import. The agent's verification
+  continues to use synthetic records and mocked Keychain storage.
+- Optional Remember token saves to native macOS Keychain via `keyring==25.7.0` only
+  after successful course retrieval. Blank-token Load courses reuses the saved token
+  for that site; Forget saved token deletes it and disconnects. Refresh does not fetch
+  Canvas data automatically, and saved tokens never prefill the password field.
+- This is a single-user local feature, not hosted account persistence. No database,
+  scheduling rule changes, or plaintext credential fallback were introduced.
+
 ### November 4 update — Canvas import implemented, live verification pending
 
 - Read-only client, all-page course/assignment retrieval, safe failure reporting, and
@@ -607,12 +720,10 @@ The earlier September-to-December schedule and proposed October 6-to-November 2 
 
 ## 22. Immediate Next Tasks
 
-Current next step: verify a real import locally with a replacement token entered only
-in the app. Review course access gaps, applicable deadlines, status labels, selections,
-and duration adjustments. Set current planning dates explicitly and rehearse a plan.
-Then design Google OAuth, a dedicated planner calendar, reviewed export with durable
-duplicate prevention, and reconciliation limited to planner-owned events. These are
-future milestones; defer database work, AI, feeds, multiuser login, and public hosting.
+Current next step: reauthorize the new calendar-list/freebusy scopes locally, rehearse
+busy-aware planning, and review one approved export plus retry/restart behavior. Then define
+reviewed reconciliation limited to planner-owned events. Database work, AI, feeds, multiuser
+login, Google Tasks, and public hosting remain deferred.
 
 Historical implementation sequence:
 

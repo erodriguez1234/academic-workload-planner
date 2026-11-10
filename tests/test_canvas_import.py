@@ -116,3 +116,18 @@ def test_duplicate_assignment_is_reported_and_not_double_scheduled(record: dict)
     client.list_assignments.return_value = [record, record]
     result = import_courses(client, [COURSE], SITE)
     assert len(result.items) == 1 and "duplicate" in result.warnings[0]
+
+
+@pytest.mark.parametrize("title", ["Roll Call Attendance", "  roll  call ATTENDANCE ", "Roll Call Attendence"])
+def test_roll_call_is_omitted_from_workload_without_an_import_gap(record, title):
+    client = Mock()
+    client.list_assignments.return_value = [{**record, "name": title}, {**record, "id": 8, "name": "Homework"}]
+    result = import_courses(client, [COURSE], SITE)
+    assert [i.assignment.title for i in result.items] == ["Homework"]
+    assert not result.warnings
+
+
+def test_other_attendance_related_assignments_are_not_hidden(record):
+    client = Mock()
+    client.list_assignments.return_value = [{**record, "name": "Attendance reflection essay"}]
+    assert len(import_courses(client, [COURSE], SITE).items) == 1

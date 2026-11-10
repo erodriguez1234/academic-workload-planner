@@ -21,6 +21,19 @@ def test_page_displays_sample_assignments_and_original_estimates() -> None:
     assert table["Original estimate (min)"].tolist() == [30, 180, 60, 180]
 
 
+def test_dates_and_times_are_readable_in_tables_and_controls() -> None:
+    app = page()
+    assert all(widget.proto.format == "12h" for widget in app.time_input)
+    assert all(widget.proto.format == "MM/DD/YYYY" for widget in app.date_input)
+    deadlines = app.dataframe[0].value["Deadline"].tolist()
+    assert "No deadline" in deadlines
+    assert all(value == "No deadline" or ("October " in value and ("AM" in value or "PM" in value)) for value in deadlines)
+    app.button(key="generate").click().run()
+    sessions = app.dataframe[1].value
+    assert sessions.iloc[0]["Start"] == "October 10, 2026 6:00PM PDT"
+    assert sessions.iloc[0]["End"] == "October 10, 2026 6:30PM PDT"
+
+
 def test_adjusted_minutes_persist_without_overwriting_original_estimate() -> None:
     app = page()
     app.number_input(key="minutes_sample-quiz-1").set_value(75).run()
