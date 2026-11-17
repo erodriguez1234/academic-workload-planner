@@ -20,7 +20,7 @@ def estimate_duration(assignment: Assignment) -> DurationEstimate:
     """Estimate a valid Assignment's workload without modifying it.
 
     Only assignment type affects v1 estimates. Missing or past deadlines do not
-    change workload; scheduling eligibility belongs to the future scheduler.
+    change workload; scheduling eligibility belongs to the scheduler.
     """
     assignment_type = assignment.assignment_type.strip().lower()
 

@@ -9,7 +9,7 @@ from workload_planner.calendar_export import (
     ExportItem, ExportLedger, ExportRow, connection_binding, export_preview, fetch_booked_sessions,
     preview_export, session_event_id, unfinished_items,
 )
-from workload_planner.deadline_planning import build_reviewed_schedule
+from workload_planner.calendar_planning import build_calendar_schedule
 from workload_planner.display import format_datetime
 from workload_planner.google_auth import GoogleConnectionError
 from workload_planner.google_calendar import GoogleCalendarClient
@@ -38,14 +38,14 @@ def calendar_settings(source: str) -> tuple:
 
 def plan_with_google(
     tasks: list[SchedulingTask], periods: Sequence[AvailabilityPeriod], preferences: SchedulingPreferences,
-    horizon_end: datetime, calendar_ids: tuple[str, ...], target_weeks: dict | None = None, assigned_weeks: dict | None = None,
+    horizon_end: datetime, calendar_ids: tuple[str, ...],
 ) -> tuple[ScheduleResult, tuple[str, ...]]:
     connection = st.session_state["google_connection"]
     client = GoogleCalendarClient(connection)
     ledger = ExportLedger()
     booked = fetch_booked_sessions(client, tasks, preferences.planning_start, horizon_end, ledger) if connection.calendar_id else ()
     busy = client.busy_periods(list(calendar_ids), preferences.planning_start, horizon_end)
-    result = build_reviewed_schedule(tasks, periods, preferences, target_weeks or {}, busy=busy, booked=booked, assigned_weeks=assigned_weeks)
+    result = build_calendar_schedule(tasks, periods, preferences, busy, booked)
     return result, tuple(session_event_id(connection, s) for s in booked)
 
 
@@ -128,6 +128,6 @@ def export_controls(
         return
     by_id = {a.assignment_id: a for a in assignments}
     options = {session_event_id(connection, s): ExportItem(s, by_id[s.assignment_id].title, by_id[s.assignment_id].course) for s in result.sessions if session_event_id(connection, s) not in booked_ids}
-    st.caption("Select proposed sessions explicitly. Already booked sessions count toward the workload and daily limit. Export rechecks busy time and only adds events to the planner calendar; no events are moved or deleted.")
+    st.caption("Select proposed sessions explicitly. Deleted confirmed exports become ready again when their time is free; approval creates replacements with new IDs. Existing matching events are recognized without duplicates. Export rechecks busy time; no events are moved or deleted.")
     selected = st.multiselect("Sessions to export", options, format_func=lambda key: f"{options[key].title} — {format_datetime(options[key].session.start_at)} ({options[key].session.duration_minutes} min)", key="export_sessions")
     _review(tuple(options[key] for key in selected), calendar_ids, "export")

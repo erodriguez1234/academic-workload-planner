@@ -25,7 +25,8 @@ from workload_planner.google_auth import GoogleConnectionError
 from workload_planner.calendar_export import session_event_id
 from workload_planner.calendar_export_ui import calendar_settings, plan_with_google, export_controls, recovery_controls
 from workload_planner.deadline_ui import deadline_inputs
-from workload_planner.deadline_planning import resolve_tasks, build_reviewed_schedule
+from workload_planner.deadline_planning import resolve_tasks
+from workload_planner.scheduler import build_schedule
 
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -235,7 +236,7 @@ def main() -> None:
         weekly_inputs()
         return
     overrides = assignment_inputs(assignments, estimates)
-    deadline_choices, deadline_context, deadlines_ready, assigned_weeks = deadline_inputs(assignments, context[0], source)
+    deadline_choices, deadline_context, deadlines_ready = deadline_inputs(assignments, context[0], source)
     weekly = weekly_inputs()
     signature = (
         source, context, tuple(overrides.items()), weekly, google_context, deadline_context,
@@ -245,11 +246,12 @@ def main() -> None:
     st.subheader("3. Generate and review")
     st.caption("The end date limits available study time; assignments outside it are still accounted for.")
     if st.button("Generate schedule", key="generate", type="primary"):
+        st.session_state.pop("export_snapshot", None)
         st.session_state["result"] = None
         st.session_state["result_signature"] = None
         try:
             if not deadlines_ready:
-                raise ValueError("Complete the selected deadline/module-week choices before generating, or choose how to plan later to leave those minutes unscheduled.")
+                raise ValueError("Complete the manual deadline date and time, or choose Do not schedule.")
             start_date, start_time, end_date, zone_name, session_limit, daily_limit = context
             try:
                 zone = ZoneInfo(zone_name.strip())
@@ -268,12 +270,12 @@ def main() -> None:
             periods = expand_weekly_availability(rules, start_date, end_date, zone)
             preferences = SchedulingPreferences(planning_start, zone, session_limit, daily_limit)
             horizon_end = localize_datetime(datetime.combine(end_date + timedelta(days=1), time.min), zone)
-            tasks, target_weeks = resolve_tasks(assignments, overrides, deadline_choices, zone, horizon_end=horizon_end)
+            tasks = resolve_tasks(assignments, overrides, deadline_choices, zone)
             booked_ids = ()
             if google_enabled:
-                result, booked_ids = plan_with_google(tasks, periods, preferences, horizon_end, calendar_ids, target_weeks, assigned_weeks)
+                result, booked_ids = plan_with_google(tasks, periods, preferences, horizon_end, calendar_ids)
             else:
-                result = build_reviewed_schedule(tasks, periods, preferences, target_weeks, assigned_weeks=assigned_weeks)
+                result = build_schedule(tasks, periods, preferences)
             st.session_state["result_booked_ids"] = booked_ids
             st.session_state["result"] = result
             st.session_state["result_signature"] = signature

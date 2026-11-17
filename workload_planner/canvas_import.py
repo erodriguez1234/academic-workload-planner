@@ -16,8 +16,6 @@ class ImportedAssignment:
     assignment: Assignment
     status: str
     selected_by_default: bool
-    quiz_id: int | None = None
-    discussion_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -98,12 +96,7 @@ def convert_assignment(
     except (TypeError, ValueError):
         raise ValueError("invalid course name, title, deadline, points, or description") from None
     status, selected = _submission_status(record)
-    quiz_id = record.get("quiz_id")
-    topic = record.get("discussion_topic")
-    discussion_id = topic.get("id") if isinstance(topic, dict) else None
-    return ImportedAssignment(assignment, status, selected,
-                              quiz_id if _positive_id(quiz_id) else None,
-                              discussion_id if _positive_id(discussion_id) else None)
+    return ImportedAssignment(assignment, status, selected)
 
 
 def import_courses(

@@ -335,11 +335,26 @@ resume_ui.py: bridges local preferences to Streamlit session state. Widget callb
 google_auth.connect_google(allow_interactive=False): reuse or renew saved credentials but
     never open a browser if sign-in is needed. UI attempts restoration once per new session.
 
-deadline_planning.py: DeadlineChoice stores a student planning choice. resolve_tasks()
-    leaves original Assignment deadlines untouched. build_reviewed_schedule() reserves
-    dated work first, then places week-based work after its related dated-work day/sessions.
-    The planning horizon is a cutoff, not an invented professor due date.
-canvas_modules.py: joins explicit module item IDs to imported assignment metadata. A quiz
-    ID differs from its assignment ID. Multiple modules require student selection.
-deadline_ui.py: prompts for manual deadline or confirmed week, saves Canvas choices,
-    and maps module IDs to Monday dates. No Canvas writes or automatic title-based guesses.
+deadline_planning.py: DeadlineChoice stores a manually entered date/time. resolve_tasks()
+    makes SchedulingTask inputs without changing Assignment.due_at. Real Canvas dates win;
+    without either a real or manual deadline, the scheduler reports unscheduled minutes.
+deadline_ui.py: offers only Do not schedule or Manual deadline. Canvas choices survive
+    reloads; old week/module preferences normalize to skip. Module inference was removed.
+
+calendar_export.current_event_id(): keeps old deleted IDs as history and derives a new,
+    stable replacement ID. Preview includes those actual IDs so old approval cannot silently
+    send a replacement after deletion acknowledgment. Logical session keys remain stable.
+
+November 16 export update: Generate and Preview automatically retire confirmed missing/
+    cancelled Google receipts after a fresh absence check. Preview also requires free future
+    time and checks new stable replacement IDs. Existing events are not overwritten. Local
+    history can change during preview, but Google insertion still requires preview/approval.
+    The obsolete deleted-session review panel/service were removed. Review unfinished
+    exports remains for uncertain network outcomes.
+
+Next milestone — LLM estimation (requested November 16)
+    Read docs/llm-estimation-handoff.md before implementation. estimate_duration() currently
+    uses only assignment type and returns DurationEstimate; unknown types use 90 active
+    minutes. Preserve this baseline and independent student overrides. No LLM provider,
+    model/runtime, completion dataset, or personalized training exists yet. First propose
+    a separate provider interface and test strict output/fallback behavior using mocks.

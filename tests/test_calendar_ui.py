@@ -137,3 +137,77 @@ def test_changed_session_selection_requires_fresh_preview_and_approval(canvas, c
     assert not app.exception
     assert not any(b.key == "export_send" for b in app.button)
     api.insert_event.assert_not_called()
+
+
+def test_deleted_export_is_automatically_regenerated_and_exported_again(canvas, calendar_api):
+    from workload_planner.calendar_export import ExportLedger
+    api,connection=calendar_api
+    events={}
+    api.get_event.side_effect=events.get
+    def insert(body):
+        events[body["id"]]={**body,"status":"confirmed"}
+        return events[body["id"]]
+    api.insert_event.side_effect=insert
+    app=connected_app()
+    app.button(key="generate").click().run()
+    first=app.session_state["result"].sessions[0]
+    logical_id=session_event_id(connection,first)
+    app.multiselect(key="export_sessions").set_value([logical_id]).run()
+    app.button(key="export_preview").click().run()
+    app.checkbox(key="export_approve").check().run()
+    app.button(key="export_send").click().run()
+    assert logical_id in events
+    del events[logical_id]  # Simulate the student's deletion in Google Calendar.
+    app.button(key="generate").click().run()
+    assert not app.exception and not app.error
+    assert ExportLedger().read()[logical_id]["status"]=="deleted"
+    assert api.insert_event.call_count==1
+    app.multiselect(key="export_sessions").set_value([logical_id]).run()
+    app.button(key="export_preview").click().run()
+    assert app.button(key="export_send").disabled
+    app.checkbox(key="export_approve").check().run()
+    app.button(key="export_send").click().run()
+    assert not app.exception
+    assert api.insert_event.call_count==2
+    assert api.insert_event.call_args.args[0]["id"]!=logical_id
+
+
+def test_deleted_review_panel_is_removed_but_unfinished_recovery_remains(canvas,calendar_api):
+    api,_=calendar_api
+    app=connected_app()
+    assert not app.exception
+    labels=[expander.label for expander in app.expander]
+    assert "Review deleted planner sessions" not in labels
+    assert "Review unfinished exports" in labels
+    assert not any(button.key == "deleted_review_load" for button in app.button)
+    api.get_event.assert_not_called()
+    api.insert_event.assert_not_called()
+
+
+def test_repreview_deleted_sessions_makes_them_ready_without_manual_recovery(canvas,calendar_api):
+    api,connection=calendar_api
+    events={}
+    api.get_event.side_effect=events.get
+    def insert(body):
+        events[body["id"]]={**body,"status":"confirmed"}
+        return events[body["id"]]
+    api.insert_event.side_effect=insert
+    app=connected_app()
+    app.button(key="generate").click().run()
+    first=app.session_state["result"].sessions[0]
+    key=session_event_id(connection,first)
+    app.multiselect(key="export_sessions").set_value([key]).run()
+    app.button(key="export_preview").click().run()
+    app.checkbox(key="export_approve").check().run()
+    app.button(key="export_send").click().run()
+    del events[key]
+    app.button(key="export_preview").click().run()
+    assert not app.exception and not app.error
+    preview=app.session_state["export_snapshot"][1]
+    assert preview.rows[0].status=="ready"
+    assert app.button(key="export_send").disabled
+    assert api.insert_event.call_count==1
+    app.checkbox(key="export_approve").check().run()
+    app.button(key="export_send").click().run()
+    assert not app.exception and api.insert_event.call_count==2
+    assert api.insert_event.call_args.args[0]["id"]!=key

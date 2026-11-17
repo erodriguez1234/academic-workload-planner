@@ -1,5 +1,9 @@
 # Intelligent Academic Workload Planner — Project Plan
 
+This document retains the original proposal and dated decisions. Sections 21–22 describe the
+current implementation and next requested work; earlier future-tense sections are historical
+plans, not evidence that every proposed technology or experiment is implemented.
+
 ## 1. Project Summary
 
 The Intelligent Academic Workload Planner is a software prototype that converts academic assignments and student availability into a structured study schedule.
@@ -212,7 +216,7 @@ Suggested fields:
 
 The first estimator will assign a base duration according to assignment type.
 
-Implemented `rule_based_v1`: quiz 30, discussion 45, reading 60, homework 90, essay 180, programming 180; unknown types use 90 minutes. These are approximate hypotheses, not measured predictions. Matching normalizes whitespace/capitalization without modifying assignments. Explanations distinguish defaults/fallbacks. Tests cover rules, validation, repeatability, no mutation, and the sample-data pipeline. Points, descriptions, courses, and deadlines do not affect v1 durations. Workload extraction and student adjustments remain deferred.
+Implemented `rule_based_v1`: quiz 30, discussion 45, reading 60, homework 90, essay 180, programming 180; unknown types use 90 minutes. These are approximate hypotheses, not measured predictions. Matching normalizes whitespace/capitalization without modifying assignments. Explanations distinguish defaults/fallbacks. Tests cover rules, validation, repeatability, no mutation, and the sample-data pipeline. Points, descriptions, courses, and deadlines do not affect v1 durations. Student adjustments are implemented separately in the UI and saved for Canvas IDs; content-based workload inference is not yet implemented.
 
 Example categories may include:
 
@@ -259,7 +263,7 @@ The trained model will be compared against:
 
 A machine-learning model will only replace the baseline if it produces a meaningful improvement on previously unseen data.
 
-Hosted AI estimation and local Qwen/Ollama inference were discussed, but neither was adopted for the MVP. A pretrained local model could later be compared with the rules using actual completion times, response latency, and failure rates. Calling a model does not automatically personalize it or train it. Local execution requires suitable hardware; remote web deployment would need access to a model service. Retain the rule-based baseline and fallback if this experiment is pursued.
+Hosted AI estimation and local Qwen/Ollama inference were not part of the original MVP. As of November 16, the user requests LLM estimation as the next milestone; no provider/model/runtime has been selected or implemented. A pretrained local model could later be compared with the rules using actual completion times, response latency, and failure rates. Calling a model does not automatically personalize it or train it. Local execution requires suitable hardware; remote web deployment would need access to a model service. Retain the rule-based baseline and fallback if this experiment is pursued.
 
 ## 13. Scheduling Strategy
 
@@ -575,6 +579,93 @@ The project does not require a highly accurate machine-learning model or a produ
 
 ## 21. Current Status
 
+### November 16 checkpoint — ready for LLM estimation work
+
+- 533 tests pass; baseline local MVP and additional Canvas/Calendar workflow implemented.
+- Changes since 246c1fd: undated work simplified to manual deadline or skip; removed module
+  inference; deleted Google exports automatically become ready again when their time is free,
+  with new stable replacement IDs; removed redundant manual deletion review, kept unfinished
+  export recovery and duplicate/ownership protections. No automatic remote update/delete.
+- Owner reported live export and deleted-session re-export working. Agent tests use mocks;
+  no real-account data was fetched by the agent. The apparent earliest-deadline issue was a
+  lack of pre-deadline availability, reproduced correctly and confirmed by the owner.
+- Next requested milestone is LLM-assisted duration estimation. Rule-based estimates and
+  independent student overrides remain authoritative fallback/review controls. Accuracy,
+  local/hosted runtime, budget, and provider/model are not assumed. See the LLM handoff.
+- Historical counts/removed module and deletion-panel designs below are retained as history.
+
+
+### November 16 update — remove obsolete deleted-session review
+
+- Full suite: 533 passing cases.
+
+- User confirmed automatic re-export works and requested removal of the now-redundant
+  Review deleted planner sessions panel. Removed its UI, state, and manual review service.
+- Automatic generation/preview checks, local receipt history, stable replacement IDs, and
+  duplicate/ownership safeguards are retained. Review unfinished exports remains because
+  pending/uncertain attempts are distinct from confirmed deleted exports.
+- Adapted useful former manual-review tests to the automatic flow and retained coverage of
+  timeout-after-create retry, repeated replacements, moved events, stale approval, atomic
+  retirement/reappearance checks, failed reads/saves, and account isolation. Removed only a
+  duplicate generation test; added a page assertion that unfinished recovery remains visible.
+- No new dependencies, core scheduling changes, private-data access, or calendar writes.
+  Earlier optional-panel descriptions below are historical and superseded.
+
+
+### November 16 update — automatic detection of deleted exports
+
+- Full suite: 534 passing cases.
+
+- User requested that deleted sessions become exportable when calendar time is free, without
+  the extra manual deletion acknowledgment introduced earlier. That new instruction supersedes
+  the separate-confirmation requirement for normal Generate/Preview flows.
+- Generate rechecks missing/cancelled confirmed receipts, retires old local IDs, and plans
+  the released minutes. Preview checks future sessions and busy time, rechecks remote absence,
+  retires eligible receipts, and checks stable replacement IDs before presenting ready rows.
+- New IDs remain deterministic across retries/restarts; old receipt history is preserved.
+  Existing events are recognized without duplicates; changed/moved events are not overwritten.
+  Pending/uncertain records retain their recovery path. Read failures never count as deletion.
+- No Google write during generation/preview. Actual creation requires fresh preview/approval;
+  preview ID binding prevents a stale approval from sending a replacement. Generate clears
+  the old export snapshot. Optional manual deletion review remains for older receipts.
+- No new dependency or change to estimator/core scheduler. Agent tests use synthetic records,
+  mocked Google calls, and temporary ledgers; no private live data was fetched or modified.
+
+
+### November 9 update — intentional Calendar deletion recovery
+
+- User confirmed manually deleting exported sessions caused generation to block. Existing
+  behavior detected missing receipts but offered no acknowledgment path. Baseline 512 passed.
+- Add separate calendar_review service and main-page deletion review: explicit read-only
+  check, selected receipts, approval, recheck all remote states, then one atomic local update.
+  Only confirmed exports for the current verified account/calendar can be released.
+- Persist deleted receipt tombstones; deterministic replacement IDs avoid reusing cancelled
+  IDs while remaining stable across retries/restarts. Existing receipts remain compatible.
+  Export previews bind actual event IDs so an old approval cannot send a new replacement.
+- Core estimator/scheduler unchanged; generate retains remaining verified bookings and busy
+  checks, then plans released minutes again. No automatic Google insert/update/delete.
+  Moved/edited events still block for manual review; uncertain attempts use existing recovery.
+- 524 tests pass, including full UI delete-review-regenerate-reexport, repeat deletions,
+  post-creation timeout recovery, stale selection/approval, event reappearance, account changes,
+  failed reads, and failed local saves. Tests use mocks/temporary files; no live private reads.
+
+
+### November 9 update — simplify undated work to manual deadline or skip
+
+- Full suite: 512 passing cases after retiring removed-feature tests.
+- User requested removal of module-based planning and all automatic week options. UI now
+  offers Do not schedule (default) or Manual deadline. Skipped selected work remains fully
+  accounted as unscheduled; deselecting removes it from requested totals.
+- Removed Canvas module/item methods, module catalog/metadata, automatic module lookup,
+  and weekly-priority adapter with tests for those retired features. Use the existing
+  scheduler offline and existing calendar-aware adapter when Google checks are enabled.
+- resolve_tasks builds only explicit manual target inputs and never mutates Assignment;
+  real Canvas deadlines win. Legacy saved module/week choices load as skip. Manual targets,
+  current classes, reconnect flags, and unrelated preferences survive normalization.
+- No automatic Canvas or Calendar writes, dependency, database, commit, or push added.
+  Earlier module-week entries below are historical and superseded by this decision.
+
+
 ### November 9 update — undated workload review and module-week tracking
 
 - 531 tests pass. Exact normalized Roll Call Attendance/Attendence is filtered from Canvas
@@ -720,10 +811,26 @@ The earlier September-to-December schedule and proposed October 6-to-November 2 
 
 ## 22. Immediate Next Tasks
 
-Current next step: reauthorize the new calendar-list/freebusy scopes locally, rehearse
-busy-aware planning, and review one approved export plus retry/restart behavior. Then define
-reviewed reconciliation limited to planner-owned events. Database work, AI, feeds, multiuser
-login, Google Tasks, and public hosting remain deferred.
+Current next step: design and implement the first small, tested LLM-estimation increment.
+Read [the complete handoff](llm-estimation-handoff.md) before editing.
+
+1. Verify Git state, source, and the 533-test checkpoint using the project's .venv.
+2. Explain the estimator interface and proposed files. Clarify local versus hosted inference,
+   model choice/hardware, and budget/privacy constraints before dependent setup. Local
+   Qwen/Ollama was discussed but is not a selected or installed solution.
+3. Define a separate provider boundary, bounded structured response, positive whole-minute
+   validation, explanation/method provenance, timeout/error handling, and rule-based fallback.
+   Start with mocked responses and synthetic content; no live model or private API data needed.
+4. Preserve the existing estimator as the baseline, student overrides, scheduling/accounting,
+   Canvas read-only behavior, reviewed Calendar export, and historical sample demo.
+5. Add a clearly labeled, explicit UI estimation action only in a subsequent reviewed increment;
+   avoid repeated inference on Streamlit reruns. Do not silently overwrite student adjustments.
+6. Evaluate against actual active completion times when available; model output is provisional,
+   not automatically trained/personalized or proven more accurate than the baseline.
+
+Only inference design/mocked implementation is planned next, not a database, model training,
+public deployment, multiuser OAuth, Canvas feeds, or automatic Calendar reconciliation. Do not
+restore removed module inference or the deleted-session review panel.
 
 Historical implementation sequence:
 

@@ -33,9 +33,29 @@ def connection_binding(connection: GoogleConnection) -> str:
 
 
 def session_event_id(connection: GoogleConnection, session: StudySession) -> str:
+    """Stable session key; current_event_id selects a replacement after deletion."""
     identity = (connection_binding(connection), session.assignment_id,
                 session.start_at.astimezone(UTC).isoformat(), session.end_at.astimezone(UTC).isoformat())
     return "a" + uuid5(NAMESPACE_URL, json.dumps(identity)).hex
+
+
+def _receipt_matches(connection: GoogleConnection, record: dict, session: StudySession) -> bool:
+    return (record.get("binding") == connection_binding(connection)
+            and record.get("assignment_id") == session.assignment_id
+            and datetime.fromisoformat(record["start"]).astimezone(UTC) == session.start_at.astimezone(UTC)
+            and datetime.fromisoformat(record["end"]).astimezone(UTC) == session.end_at.astimezone(UTC))
+
+
+def current_event_id(connection: GoogleConnection, session: StudySession, records: dict) -> str:
+    """Retire acknowledged deleted IDs, retaining stable replacement IDs on retries."""
+    event_id = session_event_id(connection, session)
+    seen = set()
+    while records.get(event_id, {}).get("status") == "deleted":
+        if event_id in seen or not _receipt_matches(connection, records[event_id], session):
+            raise GoogleConnectionError("Deleted-event history is invalid; review the local ledger.")
+        seen.add(event_id)
+        event_id = "a" + uuid5(NAMESPACE_URL, event_id + "/replacement").hex
+    return event_id
 
 
 @dataclass(frozen=True)
@@ -58,6 +78,7 @@ class ExportPreview:
     calendar_ids: tuple[str, ...]
     rows: tuple[ExportRow, ...]
     checked_at: datetime
+    event_ids: tuple[str, ...] = ()
 
 
 class ExportLedger:
@@ -72,7 +93,7 @@ class ExportLedger:
             if not isinstance(data, dict):
                 raise ValueError("invalid ledger")
             for event_id, record in data.items():
-                if not isinstance(record, dict) or record.get("status") not in ("pending", "exported", "uncertain", "failed"):
+                if not isinstance(record, dict) or record.get("status") not in ("pending", "exported", "uncertain", "failed", "deleted"):
                     raise ValueError("invalid ledger")
                 if not all(isinstance(record.get(key), str) and record[key] for key in ("binding", "assignment_id", "start", "end")):
                     raise ValueError("invalid ledger")
@@ -86,25 +107,40 @@ class ExportLedger:
     def record(self, connection: GoogleConnection, session: StudySession, status: str) -> None:
         with _STORE_LOCK:
             data = self.read()
-            data[session_event_id(connection, session)] = {
+            data[current_event_id(connection, session, data)] = {
                 "binding": connection_binding(connection), "assignment_id": session.assignment_id,
                 "start": session.start_at.astimezone(UTC).isoformat(), "end": session.end_at.astimezone(UTC).isoformat(), "status": status,
             }
-            temporary = None
-            try:
-                self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent, delete=False) as file:
-                    temporary = Path(file.name)
-                    os.fchmod(file.fileno(), 0o600)
-                    json.dump(data, file, indent=2)
-                    file.flush()
-                    os.fsync(file.fileno())
-                os.replace(temporary, self.path)
-            except OSError:
-                raise GoogleConnectionError("Export intent could not be saved locally. No further events will be sent.") from None
-            finally:
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+            self._write(data)
+
+    def confirm_deleted(self, connection: GoogleConnection, sessions: dict[str, StudySession]) -> None:
+        """Retire verified missing receipts together; preserve history and other accounts."""
+        with _STORE_LOCK:
+            data = self.read()
+            for event_id, session in sessions.items():
+                record = data.get(event_id, {})
+                if record.get("status") != "exported" or not _receipt_matches(connection, record, session) or current_event_id(connection, session, data) != event_id:
+                    raise GoogleConnectionError("Export history changed. Review deleted sessions again.")
+            for event_id in sessions:
+                data[event_id] = {**data[event_id], "status": "deleted"}
+            self._write(data)
+
+    def _write(self, data: dict) -> None:
+        temporary = None
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent, delete=False) as file:
+                temporary = Path(file.name)
+                os.fchmod(file.fileno(), 0o600)
+                json.dump(data, file, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary, self.path)
+        except OSError:
+            raise GoogleConnectionError("Export intent could not be saved locally. No further events will be sent.") from None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 def _event_session(event: dict) -> StudySession:
@@ -115,12 +151,12 @@ def _event_session(event: dict) -> StudySession:
         raise GoogleConnectionError("A planner event was changed into an unsupported interval; review it before replanning.") from None
 
 
-def _matches(connection: GoogleConnection, event: dict, session: StudySession) -> bool:
+def _matches(connection: GoogleConnection, event: dict, session: StudySession, records: dict | None = None) -> bool:
     properties = event.get("extendedProperties") or {}
     private = (properties.get("private") or {}) if isinstance(properties, dict) else {}
     if not isinstance(private, dict):
         return False
-    event_id = session_event_id(connection, session)
+    event_id = current_event_id(connection, session, records or {})
     try:
         return (event.get("status") != "cancelled" and event.get("id") == event_id
                 and private.get("awp_owner") == connection.marker and private.get("awp_session") == event_id
@@ -136,13 +172,26 @@ def _target(client: GoogleCalendarClient) -> None:
         raise GoogleConnectionError("The target calendar's ownership marker does not match. Export is blocked.")
 
 
+def _missing_event(event: dict | None, event_id: str) -> bool:
+    return event is None or (event.get("id") == event_id and event.get("status") == "cancelled")
+
+
+def _retire_missing_exports(client: GoogleCalendarClient, ledger: ExportLedger, missing: dict[str, StudySession]) -> None:
+    """Recheck confirmed deletions and update local history, never Google events."""
+    for event_id in missing:
+        if not _missing_event(client.get_event(event_id), event_id):
+            raise GoogleConnectionError("Calendar changed during the check; an event is present again. Generate or preview again.")
+    ledger.confirm_deleted(client.connection, missing)
+
+
 def unfinished_items(connection: GoogleConnection, ledger: ExportLedger) -> tuple[ExportItem, ...]:
     binding = connection_binding(connection)
     items = []
-    for event_id, record in ledger.read().items():
+    records = ledger.read()
+    for event_id, record in records.items():
         if record["binding"] == binding and record["status"] in ("pending", "uncertain"):
             session = StudySession(record["assignment_id"], datetime.fromisoformat(record["start"]), datetime.fromisoformat(record["end"]))
-            if session_event_id(connection, session) != event_id:
+            if current_event_id(connection, session, records) != event_id:
                 raise GoogleConnectionError("An unfinished export record is invalid; review the local ledger.")
             items.append(ExportItem(session, "Previously approved study session", ""))
     return tuple(items)
@@ -157,7 +206,7 @@ def fetch_booked_sessions(
     end = max([end, *(t.due_at for t in tasks if t.due_at is not None)])
     records = ledger.read()
     selected = {task.assignment_id for task in tasks}
-    booked, seen = [], set()
+    booked, seen, missing = [], set(), {}
     for event in client.list_planner_events(start, end):
         properties = event.get("extendedProperties") or {}
         if not isinstance(properties, dict) or not isinstance(properties.get("private", {}), dict):
@@ -167,7 +216,7 @@ def fetch_booked_sessions(
             continue
         session = _event_session(event)
         event_id = event.get("id")
-        if not _matches(client.connection, event, session):
+        if not _matches(client.connection, event, session, records):
             if session.assignment_id in selected:
                 raise GoogleConnectionError("A previously booked planner session changed. Review it before generating a new schedule.")
             continue
@@ -178,19 +227,23 @@ def fetch_booked_sessions(
         if records.get(event_id, {}).get("status") in ("pending", "uncertain"):
             ledger.record(client.connection, session, "exported")
     for event_id, record in records.items():
-        if record["binding"] != binding or record["assignment_id"] not in selected or record["status"] == "failed" or event_id in seen:
+        if record["binding"] != binding or record["assignment_id"] not in selected or record["status"] in ("failed", "deleted") or event_id in seen:
             continue
         session = StudySession(record["assignment_id"], datetime.fromisoformat(record["start"]), datetime.fromisoformat(record["end"]))
         if session.end_at <= start or session.start_at >= end:
             continue
         event = client.get_event(event_id)
-        if event and _matches(client.connection, event, session):
+        if event and _matches(client.connection, event, session, records):
             booked.append(session)
             ledger.record(client.connection, session, "exported")
         elif record["status"] in ("pending", "uncertain"):
             raise GoogleConnectionError("A previous export is unfinished. Use Review unfinished exports before generating another plan for this assignment.")
+        elif _missing_event(event, event_id):
+            missing[event_id] = session
         else:
-            raise GoogleConnectionError("A previously exported session was deleted or changed. Automatic reconciliation is not enabled; review it first.")
+            raise GoogleConnectionError("A previously exported session still exists but was changed. Review it in Google Calendar before replanning.")
+    if missing:
+        _retire_missing_exports(client, ledger, missing)
     return tuple(booked)
 
 
@@ -210,35 +263,53 @@ def preview_export(
     sessions = sorted((work.session for work in items), key=lambda s: s.start_at.astimezone(UTC))
     if any(b.start_at.astimezone(UTC) < a.end_at.astimezone(UTC) for a, b in zip(sessions, sessions[1:])):
         raise GoogleConnectionError("Approved sessions overlap; generate a fresh schedule.")
-    records = ledger.read()
-    binding = connection_binding(client.connection)
-    event_ids = {session_event_id(client.connection, work.session) for work in items}
-    rows = []
-    for work in items:
-        event_id = session_event_id(client.connection, work.session)
-        existing = client.get_event(event_id)
-        if existing is not None:
-            status = "already present" if _matches(client.connection, existing, work.session) else "changed; review required"
-            if status == "already present" and records.get(event_id, {}).get("status") in ("pending", "uncertain"):
-                ledger.record(client.connection, work.session, "exported")
-        elif records.get(event_id, {}).get("status") == "exported":
-            status = "changed; review required"
-        elif work.session.start_at.astimezone(UTC) <= now.astimezone(UTC):
-            status = "already started"
-        elif any(r["binding"] == binding and r["assignment_id"] == work.session.assignment_id and r["status"] in ("pending", "uncertain") and datetime.fromisoformat(r["end"]) > now and key not in event_ids for key, r in records.items()):
-            status = "unfinished export; recover first"
-        else:
-            status = "ready"
-        rows.append(ExportRow(work, status))
-    ready = [row.item.session for row in rows if row.status == "ready"]
-    if ready:
-        busy = client.busy_periods(list(ids), min(s.start_at for s in ready), max(s.end_at for s in ready))
-        rows = [ExportRow(row.item, "conflict") if row.status == "ready" and any(_overlaps(row.item.session, b) for b in busy) else row for row in rows]
-    return ExportPreview(binding, ids, tuple(rows), now)
+    replacements: set[str] = set()
+    # Usually two passes: detect deletions, then preview stable replacement IDs.
+    # Extra passes allow selected intervals to become free during the check.
+    for _ in range(len(items) + 1):
+        records = ledger.read()
+        binding = connection_binding(client.connection)
+        ordered_ids = tuple(current_event_id(client.connection, work.session, records) for work in items)
+        event_ids = set(ordered_ids)
+        rows, missing = [], {}
+        for work in items:
+            event_id = current_event_id(client.connection, work.session, records)
+            existing = client.get_event(event_id)
+            gone = _missing_event(existing, event_id)
+            confirmed = records.get(event_id, {}).get("status") == "exported"
+            if existing is not None and not gone:
+                status = "already present" if _matches(client.connection, existing, work.session, records) else "changed; review required"
+                if status == "already present" and records.get(event_id, {}).get("status") in ("pending", "uncertain"):
+                    ledger.record(client.connection, work.session, "exported")
+            elif work.session.start_at.astimezone(UTC) <= now.astimezone(UTC):
+                status = "already started"
+            elif any(r["binding"] == binding and r["assignment_id"] == work.session.assignment_id and r["status"] in ("pending", "uncertain") and datetime.fromisoformat(r["end"]) > now and key not in event_ids for key, r in records.items()):
+                status = "unfinished export; recover first"
+            elif gone and confirmed:
+                status = "ready"
+                missing[event_id] = work.session
+            elif existing is not None:
+                # No confirmed receipt: never replace an unknown cancelled ID.
+                status = "changed; review required"
+            else:
+                status = "ready"
+            message = "The previous event was deleted; approval will create a replacement." if status == "ready" and session_event_id(client.connection, work.session) in replacements else ""
+            rows.append(ExportRow(work, status, message))
+        ready = [row.item.session for row in rows if row.status == "ready"]
+        if ready:
+            busy = client.busy_periods(list(ids), min(s.start_at for s in ready), max(s.end_at for s in ready))
+            rows = [ExportRow(row.item, "conflict") if row.status == "ready" and any(_overlaps(row.item.session, b) for b in busy) else row for row in rows]
+        eligible = {current_event_id(client.connection, row.item.session, records): row.item.session for row in rows if row.status == "ready"}
+        retire = {key: session for key, session in missing.items() if key in eligible}
+        if retire:
+            _retire_missing_exports(client, ledger, retire)
+            replacements.update(session_event_id(client.connection, session) for session in retire.values())
+            continue
+        return ExportPreview(binding, ids, tuple(rows), now, ordered_ids)
+    raise GoogleConnectionError("Export history changed during preview; preview again.")
 
 
-def _event_body(connection: GoogleConnection, work: ExportItem) -> dict:
-    event_id = session_event_id(connection, work.session)
+def _event_body(connection: GoogleConnection, work: ExportItem, event_id: str) -> dict:
     return {
         "id": event_id, "summary": f"Study: {work.title}",
         "description": f"Course: {work.course}\n{work.session.duration_minutes} active working minutes. Created by Academic Workload Planner.",
@@ -260,6 +331,9 @@ def export_preview(
         raise GoogleConnectionError("Another export is in progress. Check its results before retrying.")
     try:
         fresh = preview_export(client, tuple(row.item for row in preview.rows), calendar_ids, ledger, now=now)
+        if fresh.event_ids != preview.event_ids:
+            raise GoogleConnectionError("Export history changed. Generate and review a fresh export preview.")
+        records = ledger.read()
         results, stopped = [], False
         for original, row in zip(preview.rows, fresh.rows):
             if original.status != "ready" or row.status != "ready":
@@ -284,16 +358,17 @@ def export_preview(
                 stopped = True
                 continue
             try:
-                event = client.insert_event(_event_body(client.connection, row.item))
-                if not _matches(client.connection, event, session):
+                event_id = current_event_id(client.connection, session, records)
+                event = client.insert_event(_event_body(client.connection, row.item, event_id))
+                if not _matches(client.connection, event, session, records):
                     raise GoogleConnectionError("Google's event response could not be verified.")
             except GoogleConnectionError as error:
                 if error.status_code == 409:
                     try:
-                        event = client.get_event(session_event_id(client.connection, session))
+                        event = client.get_event(current_event_id(client.connection, session, records))
                     except GoogleConnectionError:
                         event = None
-                    if event and _matches(client.connection, event, session):
+                    if event and _matches(client.connection, event, session, records):
                         try:
                             ledger.record(client.connection, session, "exported")
                             results.append(ExportRow(row.item, "already present"))

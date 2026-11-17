@@ -4,7 +4,6 @@ import streamlit as st
 
 from workload_planner.canvas_client import CanvasClient, CanvasClientError
 from workload_planner.canvas_import import import_courses
-from workload_planner.canvas_modules import load_module_catalog
 from workload_planner.models import Assignment
 from workload_planner.resume_ui import preferences, remember, remember_classes
 from workload_planner.display import format_datetime
@@ -181,11 +180,6 @@ def canvas_assignment_inputs() -> list[Assignment]:
             )
         st.session_state["canvas_snapshot"] = snapshot
         st.session_state["canvas_imported_courses"] = selection
-        if any(preferences()["deadline_choices"].get(item.assignment.assignment_id, {}).get("mode") == "module" for item in snapshot.items if item.assignment.due_at is None):
-            with st.spinner("Checking saved module placement…"):
-                st.session_state["canvas_module_catalog"] = load_module_catalog(
-                    st.session_state["canvas_client"], [by_id[cid] for cid in course_ids], snapshot.items, site,
-                )
     if "canvas_snapshot" not in st.session_state:
         return []
     if selection != st.session_state["canvas_imported_courses"]:

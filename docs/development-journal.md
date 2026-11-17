@@ -1,5 +1,150 @@
 # Development Journal
 
+## November 16, 2026 — Documentation and Git handoff for LLM estimation
+
+- User requested staging/committing all changes since 246c1fd, pushing to main, updating
+  documentation, and supplying a new-chat prompt for LLM estimation. Inspected Git and
+  fetched origin; local/remote heads initially matched, with existing uncommitted changes.
+- Verified all 533 tests pass using .venv/bin/python -m pytest -v. pip check reports no
+  broken requirements; git diff --check is part of the final staged validation. No live
+  private Canvas/Google/model requests or credential reads were needed for verification.
+- Checkpoint includes manual/skip undated-work simplification, removed module inference,
+  automatic deleted-export re-creation with stable replacement IDs, removed manual deletion
+  panel/service, retained uncertain-export recovery, and updated regression/failure tests.
+- Updated README overview/tree/current limitations; distinguished historical plan/proposal
+  text from current capabilities. Updated AGENTS priorities and project-plan current status,
+  next tasks, and estimation design. Added docs/llm-estimation-handoff.md with exact contracts,
+  component responsibilities, privacy boundaries, retained/deferred scope, and a copyable prompt.
+- LLM estimation is now the user's next requested milestone; no implementation/provider/model
+  is selected. Qwen/Ollama remains a discussed option, not a verified installation. First
+  increment should be a separately testable provider boundary, strict active-minute result
+  validation, explained baseline fallback, and mocked failures. Preserve student overrides,
+  sample dates, scheduling constraints, Canvas reads, and reviewed Calendar exports.
+- No measured completion dataset or evidence of improved accuracy exists. Inference is not
+  personalization/training. Local/hosted hardware, cost, and privacy choices must be settled
+  before dependent setup or private inference; no credentials should be requested in chat.
+- A reported deadline-priority issue was reproduced as correct behavior: no study time existed
+  before the November 17 3PM deadlines with a November 16 9:06PM start and 6–8PM windows.
+  The user confirmed the scheduler was working and stopped that investigation; no algorithm
+  or settings were changed for it.
+- Authorized checkpoint message: Simplify undated planning and support automatic Calendar
+  re-export. Stage only non-ignored project files; verify credential scan and remote state.
+  Commit/push results are reported in chat and can be verified with git log/status.
+
+## November 16, 2026 — Remove obsolete deleted-session review panel
+
+- User confirmed automatic deletion/re-export worked and requested removing the redundant
+  Review deleted planner sessions section. Read continuity docs/status/source/requirements/
+  ignore rules; baseline 534 passed. Preserved existing uncommitted changes.
+- Explained removal of the UI/manual confirmation path while retaining automatic checks and
+  unfinished-export recovery. Changed a page test first and observed the expected failure.
+- Removed _deleted_controls, its import/state cleanup, and the unused calendar_review service.
+  Kept automatic missing-event rechecks, atomic local receipt retirement, stable replacement
+  IDs, preview approval, and current calendar availability checks unchanged.
+- Retained Review unfinished exports for pending/uncertain outcomes. Adapted useful former
+  manual-service tests into test_calendar_replacements.py for the actual automatic path:
+  timeout-after-create recovery, repeated deletion/replacement, moved-event protection,
+  batch reappearance checks, failed reads/saves, account isolation, and stale approval.
+- Full suite: 533 passed with .venv/bin/python -m pytest -v; git diff --check clean.
+  One duplicate generation test retired. Page regression confirms deleted-review panel is
+  absent, unfinished recovery remains, and no extra event reads/writes occur on page load.
+- Updated README, current design notes, working instructions, and personal notes. No new
+  dependency, core algorithm change, private ledger access, live Calendar test, commit,
+  or push. Restarted the local server to display the simpler page.
+- Python note: the removed UI called a separate manual review service. Generate/Preview
+  already use the automatic ledger helpers directly, so the service can be removed without
+  removing the automatic deletion detection or its failure safeguards.
+
+## November 16, 2026 — Re-export deleted sessions without a separate acknowledgment
+
+- User reported all re-export rows showed changed/review required after manually deleting
+  Google events, and requested free time to be exportable again. Read continuity docs/source/
+  requirements/ignore rules/status; baseline 524 passed. Preserved uncommitted prior changes.
+- Explained automatic confirmed-deletion detection while retaining explicit export approval.
+  Wrote mocked service/UI tests first and observed expected failures before implementation.
+- Generate and Preview now recognize missing/cancelled confirmed receipts. Recheck each
+  remote absence before atomically retiring old local IDs. Preview does this only for future
+  selected sessions that pass busy-time checks, then previews their stable replacement IDs.
+- Preview may update local history but never inserts events. Generate releases missing
+  bookings and retains current busy/study limits. No separate deletion confirmation required.
+- Existing matching exports remain already present; mixed present/deleted selections insert
+  only replacements. Moved/changed existing events stay protected. Pending/uncertain records
+  and unknown cancelled IDs are not silently reclassified as confirmed deletions.
+- Failed reads leave permission denied rather than assuming free/deleted. Event reappearance
+  blocks retirement. Preserved old-ID history and new deterministic IDs keep retries/restarts
+  safe. Prior approval is invalidated by replacement-ID changes; Generate clears old snapshots.
+- Optional manual deletion review remains for historical receipts. Updated its description,
+  current usage instructions, and design checkpoint so it is no longer a normal required step.
+- Python notes: a bounded multi-pass preview detects missing old IDs, then checks their new
+  stable IDs. A dictionary collects eligible receipt updates for one atomic local save; no
+  partial retirement occurs when a selected event reappears during the remote recheck.
+- Full suite: 534 passed with .venv/bin/python -m pytest -v; git diff --check clean.
+  New cases cover absent/cancelled exports, direct re-preview/re-export without manual recovery,
+  retry without duplicates, mixed existing/missing and free/busy selections, denied reads,
+  automatic generation release, and event reappearance. Existing review/export tests pass.
+- No direct access to the owner's private ledger, live API calls, calendar writes, new
+  dependency, commit, or push by the agent. Core estimator/scheduler behavior unchanged.
+
+## November 9, 2026 — Acknowledge intentionally deleted Google study sessions
+
+- User reported generation blocked by a deleted/changed exported-session receipt and confirmed
+  they deleted sessions in Google Calendar. Baseline 512 passed. Preserved all uncommitted
+  manual/skip simplification changes. Never read or edited the owner's private export ledger.
+- Explained a focused deletion review before implementation; added failing mocked tests first.
+  Existing safeguard was intentional, but had no usable confirmation path for deliberate deletion.
+- Add calendar_review service: preview missing/cancelled confirmed receipts in the verified
+  planner calendar, select and approve intentional deletions, recheck every selected remote
+  event, then atomically mark those local receipts deleted. No automatic acknowledgment.
+- Changed existing events cannot be classified as deletions. Pending/uncertain attempts retain
+  existing recovery. Target ownership, account binding, record identity, and current history
+  are checked. Failed reads or stale/event-present reviews leave every receipt unchanged.
+- Keep deleted receipts as history. current_event_id derives deterministic replacement IDs
+  after each acknowledged deletion; logical session IDs still identify UI selections. Fresh
+  preview captures actual IDs, preventing old approval from creating a replacement silently.
+- Reuse the atomic ledger writer for batched acknowledgment. Export and acknowledgment share
+  the in-process lock. Replacement retries/409 checks and unfinished recovery use current IDs.
+  No Google update/delete operations added; core scheduling/estimation unchanged.
+- Added Review deleted planner sessions UI with prior times/minutes, explicit selection and
+  confirmation, and instruction to Generate again. Invalidate current results and prior export
+  approval after acknowledgment. Disconnect clears review state. No credential or title logging.
+- Full suite: 524 passed with .venv/bin/python -m pytest -v. Added service/UI coverage for
+  deletion recovery, new stable replacement IDs, timeout-after-create retry, repeated deletions,
+  changed events, event reappearance, different accounts, pending receipts, local save failure,
+  and stale export/deletion approval. No private live API calls, commits, or pushes performed.
+- Updated usage/design notes. Restart local app for user review. Live acknowledgment is a user
+  action in the app; do not silently edit the ledger to bypass duplicate protection.
+- Python notes: frozen review dataclasses capture exactly what was shown. A tombstone preserves
+  an old receipt with deleted status instead of removing history. Deterministic UUID derivation
+  supplies a new event ID per acknowledged replacement, then reuses it for subsequent retries.
+
+## November 9, 2026 — Remove module/week planning for undated work
+
+- User reported the module idea was not working and requested only manual dates or no
+  scheduling. Read continuity docs/source/status/requirements/ignore rules. Baseline 531
+  passed; Git was clean at 246c1fd. No source edits from the user were overwritten.
+- Explained simplification and legacy preference compatibility before changes. Replaced
+  retired-feature tests with manual/skip and migration tests, observed expected failures,
+  then simplified the implementation.
+- UI now offers Do not schedule or Manual deadline. Default skip creates no sessions;
+  selected skipped minutes remain explicitly unscheduled. Deselecting excludes the task
+  from workload totals. Manual dates/time and real Canvas-date precedence are preserved.
+- Removed Canvas module/item retrieval, module catalog/types and metadata, automatic
+  placement lookup, week-priority staging, and associated tests. Use the original scheduler
+  offline and original calendar-aware adapter when Google checks are enabled.
+- Normalized old module/week choices to skip on preference reads; preserve manual targets,
+  classes, source, and connection flags. Drop obsolete fields on the next normal save.
+  Do not directly edit the owner's private files or delete existing calendar sessions.
+- Full suite: 512 passed using .venv/bin/python -m pytest -v. Count decreased because tests
+  for retired features were removed. Coverage verifies the two choices, manual persistence,
+  skip accounting, stale-result invalidation, real-date precedence, no module transport,
+  and legacy settings compatibility. Existing sample, busy-time, and export tests pass.
+- Updated README, project status, working instructions, and personal notes to match the
+  simpler feature. Prior journal entries remain historical. Local server restarted to load
+  the updated modules. No live private API test, dependency, commit, or push performed.
+- Python note: removing an item from the choices dictionary removes that UI option;
+  normalization translates saved legacy values into supported choices instead of raising
+  errors or accidentally converting a guessed week into a manual deadline.
+
 ## November 9, 2026 — Undated assignments, weekly priority, and Roll Call filtering
 
 - Read continuity docs/source/Git/requirements/ignore rules. Baseline: 498 passed plus one

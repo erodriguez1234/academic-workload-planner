@@ -4,7 +4,7 @@
 
 The Intelligent Academic Workload Planner is a capstone software prototype designed to help students organize assignments and distribute their workload across available study time.
 
-The completed system will retrieve assignment information from Canvas, estimate how long assignments may take, and generate study sessions that occur before their deadlines. Students will be able to review the proposed schedule and eventually export approved study sessions to Google Calendar.
+The local prototype imports sample or Canvas assignments, estimates active working time, and generates study sessions within availability and before applicable deadlines. Students can review the schedule and export approved sessions to a dedicated Google Calendar, accounting for busy events.
 
 The project focuses on reducing the manual planning required from students while avoiding overloaded study days and last-minute work.
 
@@ -30,7 +30,7 @@ The main goals of this project are to:
 5. Schedule sessions before assignment deadlines.
 6. Warn the student when the available time is insufficient.
 7. Allow the student to review the generated schedule.
-8. Eventually export approved sessions to Google Calendar.
+8. Export reviewed and approved sessions to a dedicated Google Calendar.
 9. Collect actual completion times for future estimation improvements.
 
 ## Minimum Viable Product
@@ -104,10 +104,28 @@ The scheduling algorithm should:
 
 ## Project Status
 
-November 9, 2026 update: selected undated work can use a student-entered deadline or
-be planned after dated work associated with its confirmed week. Canvas modules can be
-mapped to week-start dates; Roll Call Attendance is excluded from workload imports.
-531 tests pass with synthetic data and mocked APIs.
+**Current checkpoint — November 16, 2026:** 533 tests pass. The local MVP, read-only Canvas
+import, editable estimates/manual deadlines, persistent choices/connections, calendar-aware
+scheduling, and reviewed Google exports/re-exports are implemented. Module/week inference and
+its UI are removed. Deleted confirmed exports are detected automatically; unfinished-export
+recovery remains. The owner reported successful live export/re-export; automated verification
+uses mocks and synthetic records, not live private API calls.
+
+**Next requested milestone:** LLM-assisted time estimation. No LLM/provider/runtime or trained
+personalized model is implemented. Keep rule_based_v1, its fallback, and student overrides.
+Start with [the LLM handoff](docs/llm-estimation-handoff.md). Older dated entries below record
+historical checkpoints; the project plan's current status and next tasks take precedence.
+
+November 16, 2026 update: Generate and Preview automatically detect deleted confirmed
+Google exports. Free sessions become ready again using new, retry-stable replacement IDs.
+Only approved exports create Google events; moved/changed existing sessions remain protected.
+The obsolete deleted-session review panel has been removed; uncertain-export recovery remains.
+533 tests pass using synthetic data and mocked APIs.
+
+November 9, 2026 update: undated work now offers only a manual planning deadline or
+Do not schedule. Module/week inference and related API calls were removed at the user's
+request. Existing manual deadlines and connection/class preferences remain compatible.
+512 tests pass; removed-feature tests were retired.
 
 November 9, 2026 update: local reload preferences restore the last data mode, remembered
 Canvas connection/current classes, fresh assignment imports, and saved Google authorization.
@@ -152,32 +170,45 @@ academic-workload-planner/
 ├── README.md
 ├── requirements.txt
 ├── streamlit_app.py
-├── .gitignore
+├── personal_notes.txt
 ├── workload_planner/
 │   ├── __init__.py
-│   ├── models.py
-│   ├── scheduling_models.py
-│   ├── scheduler.py
 │   ├── availability.py
+│   ├── calendar_export.py
+│   ├── calendar_export_ui.py
+│   ├── calendar_planning.py
+│   ├── canvas_client.py
+│   ├── canvas_import.py
+│   ├── canvas_ui.py
+│   ├── credentials.py
+│   ├── deadline_planning.py
+│   ├── deadline_ui.py
+│   ├── display.py
+│   ├── duration_storage.py
 │   ├── estimator.py
-│   └── loaders.py
-├── sample_data/
-│   └── assignments.json
-├── tests/
-│   ├── __init__.py
-│   ├── test_models.py
-│   ├── test_scheduling_models.py
-│   ├── test_scheduler.py
-│   ├── test_availability.py
-│   ├── test_streamlit_app.py
-│   ├── test_estimator.py
-│   └── test_loaders.py
+│   ├── google_auth.py
+│   ├── google_calendar.py
+│   ├── google_ui.py
+│   ├── loaders.py
+│   ├── local_preferences.py
+│   ├── models.py
+│   ├── planning_defaults.py
+│   ├── resume_ui.py
+│   ├── scheduler.py
+│   └── scheduling_models.py
+├── sample_data/assignments.json
+├── tests/                         # unit, mocked API/storage, and real-page AppTest cases
 └── docs/
     ├── project-plan.md
-    └── development-journal.md
+    ├── development-journal.md
+    ├── llm-estimation-handoff.md
+    └── capstone-proposal.pdf       # original proposal, retained as historical context
 ```
 
-Add modules as their milestones begin. The proposed technology stack above is a roadmap, not a list of currently installed dependencies; core scheduling/estimation code uses the Python standard library. The interface adds Streamlit (and its required dependencies), with pytest and Streamlit AppTest for testing.
+The installed dependencies are listed in requirements.txt. SQLite, SQLAlchemy, scikit-learn,
+and an LLM runtime/client are not part of the current implementation. Core estimation and
+scheduling use the standard library. Private `.local/` files and `.venv/` are ignored by Git;
+Google/Canvas credentials are never committed.
 
 ## Scheduling Representations (Step 4)
 
@@ -397,44 +428,25 @@ for local review. Sample-data mode remains available; reviewed Google export is 
 
 ## Planning Assignments Without Deadlines
 
-Selected assignments without a Canvas deadline appear in **Review assignments with no
-deadline**. The import table continues to show **No deadline**; your choices do not change
-Canvas or the original Assignment object.
+Selected undated assignments appear in **Review assignments with no deadline**, with two choices:
 
-- **Manual deadline:** enter a date/time in the selected student timezone. This is a student
-  planning deadline and takes normal deadline priority. A later real Canvas deadline wins.
-- **After dated work (choose week):** choose a date in the assignment's reference week.
-- **After dated work (module week):** first click **Load module placement from Canvas**.
-  Confirm a Monday week-start date for the relevant module, then select the assignment's
-  intended module. Multiple module memberships require your choice; names such as Module 3
-  and unlock dates are not treated as due dates or reliable calendar-week numbers.
-- **Choose how to plan:** leave unresolved work unscheduled with every minute accounted for.
-  A selected module-based option with missing/unverified mapping blocks generation until
-  reviewed; choose another option if module access is unavailable.
+- **Do not schedule** (default): create no sessions. The selected assignment remains visible
+  and its requested minutes are reported as unscheduled. Deselect it from **Assignments to
+  schedule** if you want to remove it from workload totals entirely.
+- **Manual deadline**: enter a date/time in the selected student timezone. This student
+  planning deadline uses normal scheduling priority. It does not change Canvas or the
+  original Assignment; a real deadline supplied by Canvas always takes precedence.
 
-Week-based work has no invented Sunday due date. The planner reserves time for all selected
-work with real/manual deadlines first. For each reference week, it then waits until the last
-dated-work day and the end of its reserved sessions before placing undated work. Confirmed
-module weeks group dated work where possible; otherwise the actual due-date week is used.
-For Monday/Tuesday/Wednesday deadlines, undated work starts Wednesday or later. If related
-dated work remains unscheduled, that week’s undated work waits too. It may spill into later
-weeks up to the entered planning horizon; extend that horizon if needed. Busy time, retained
-bookings, daily/session limits, and exact minute accounting apply across both priority passes.
-Existing bookings incompatible with a new priority choice require review, not automatic moves.
+Canvas choices remain saved by stable assignment ID in ignored owner-only
+`.local/planner_preferences.json`. Old module/week choices safely load as **Do not schedule**;
+manual deadlines, current classes, and connection preferences are preserved. Legacy module
+fields are dropped on the next preferences save. No module requests or inferred week targets
+remain. Sample choices stay temporary, preserving the historical 390 scheduled + 60 unscheduled
+example until you explicitly provide a reading deadline.
 
-Canvas planning choices and module weeks are saved by stable IDs in ignored owner-only
-`.local/planner_preferences.json`; there are no assignment titles/descriptions or credentials
-in that file. Configured module-based choices refresh module membership during re-import.
-Otherwise module lookup is an explicit read-only action. Module/item retrieval fetches all
-pages and reports access gaps. Direct assignment links and explicitly matched quiz/discussion
-IDs are supported; ambiguous/unavailable links require a manual week/deadline. Normal API
-access limitations still apply. Sample choices remain temporary, preserving the historical
-390 scheduled + 60 unscheduled demonstration until you explicitly choose a reading target.
-
-Exact **Roll Call Attendance** (also **Roll Call Attendence**) titles are excluded from import
-rows and scheduling choices, ignoring case and extra whitespace. Other attendance-related
-assignments remain visible. Re-import or reload to remove an existing snapshot's Roll Call row.
-This filter does not delete any Canvas assignment or existing Google event.
+Exact **Roll Call Attendance** (also **Roll Call Attendence**) titles remain excluded from
+workload import, ignoring case/extra whitespace. Other attendance-related work stays visible.
+Neither deadline choices nor this filter delete Canvas assignments or existing Google events.
 
 ## Connecting Google Calendar Locally
 
@@ -530,15 +542,39 @@ Older saved credentials are rejected rather than treated as if they granted new 
 
 The app writes only to its ownership-marked planner calendar, with no attendees, default
 reminders, updates, or deletes. Event IDs are deterministic for account/calendar, assignment,
-and UTC interval. Private event metadata identifies app ownership. The owner-only, atomically
+and UTC interval. After a reviewed deletion, a deterministic replacement ID is selected
+without reusing the deleted ID. Private event metadata identifies app ownership. The owner-only, atomically
 replaced `.local/calendar_exports.json` stores IDs, intervals, assignment IDs, and attempt
 states; it contains no tokens or titles. Keep this ignored file for recovery across restarts.
 An unreadable ledger blocks export and is not overwritten.
 
+If you delete exported study sessions in Google Calendar, you can export them again without
+a separate deletion-confirmation step:
+
+1. Click **Generate schedule** to replan around current busy times, or **Preview selected
+   sessions** to re-export sessions from the current plan.
+2. The app checks confirmed export receipts against Google. Missing/cancelled events are
+   rechecked before their old IDs are retired in local history. Preview marks free, future
+   sessions **ready**, with replacement information; unavailable time remains **conflict**.
+3. Review the preview, approve, and click **Export approved sessions**. A replacement gets
+   a new event ID, stable across retries/restarts. Existing matching events are recognized
+   without duplication. Busy time is checked again before writing.
+
+Preview may update local receipt history, but never creates Google events. Generation also
+releases verified missing receipts, then uses current busy time and existing study limits.
+A failed event/busy-time read never grants permission to export. Events that reappear during
+the check stop retirement; changed existing events are not overwritten. New replacement IDs
+invalidate prior export approval, so a fresh preview/approval is still required.
+
+**Review deleted planner sessions** was removed because Generate and Preview handle
+confirmed deletions automatically. Pending/uncertain attempts still use **Review unfinished
+exports**. Deleting a session does not prove assignment completion: adjust remaining minutes
+or deselect work if it should not be replanned. Keep the ledger for retry/ownership history.
+
 On regeneration, verified future planner bookings remain fixed and count toward assignment
 minutes and daily study capacity, including bookings outside the new horizon. Only the remainder
-is scheduled. Existing bookings that were moved, deleted, exceed adjusted minutes, or no longer
-fit the deadline can block replanning for review. Automatic reconciliation is a later milestone;
+is scheduled. Missing confirmed bookings are detected automatically. Existing bookings that
+were moved, exceed adjusted minutes, or no longer fit the deadline can block replanning for review. Automatic reconciliation is a later milestone;
 this step never shifts an existing event. Past bookings are not evidence of completed work:
 review remaining assignment minutes yourself. Existing conflicts involving retained bookings
 also require manual review. There is no atomic Google free/busy-and-insert transaction, so an
@@ -623,8 +659,16 @@ for assignment in assignments:
 - Existing `Assignment` and `DurationEstimate` validation runs at construction; later field edits bypass it. New scheduling models are frozen.
 - Assignment loading still accepts non-finite points (NaN/infinity) and duplicate IDs. `ScheduleResult` rejects duplicate requested task IDs.
 - The baseline scheduler enforces the documented placement policies; step 6 adds independent constraint checks in tests and readable failure messages. Greedy leftovers do not prove infeasibility.
-- Streamlit is pinned to the tested version; pytest and transitive dependencies are not fully pinned. The 253 passing cases establish this checkpoint, not exhaustive validation or prediction accuracy.
-- See [the project plan](docs/project-plan.md) for the next milestone and [the development journal](docs/development-journal.md) for decisions and learning notes. New sessions should also read `AGENTS.md` and inspect the current code and Git state.
+- Streamlit is pinned to the tested version; pytest and transitive dependencies are not fully pinned. The latest full suite has 533 passing cases; tests do not establish prediction accuracy or exhaustive correctness.
+- Estimates currently use only normalized assignment type. Unknown Canvas types often receive
+  the 90-minute fallback; titles/descriptions/points do not yet influence predictions. LLM
+  estimation is the next requested experiment, with no measured accuracy improvement yet.
+- No database, actual-completion tracking, personalized training, public/multiuser deployment,
+  or automatic moving/deleting of existing Google events is implemented.
+- The scheduler's deadline priority is correct: time after a deadline cannot help an earlier
+  task. With a November 16 9:06PM start and 6–8PM availability, the first window is November 17
+  at 6PM, too late for November 17 3PM deadlines. The owner confirmed this was expected.
+- See [the LLM handoff](docs/llm-estimation-handoff.md) and [the project plan](docs/project-plan.md) for the next milestone and [the development journal](docs/development-journal.md) for decisions and learning notes. New sessions should also read `AGENTS.md` and inspect the current code and Git state.
 
 ## Author
 

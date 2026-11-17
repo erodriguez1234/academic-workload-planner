@@ -36,10 +36,20 @@ def test_secret_field_cannot_be_saved(tmp_path: Path) -> None:
         save_preferences({"token": "never-save"}, tmp_path / "settings.json")
 
 
-def test_planning_choices_and_module_weeks_round_trip_without_assignment_content(tmp_path):
-    path=tmp_path/"prefs.json"
-    choice={"mode":"manual","day":"2026-11-12","clock":"23:59","module":""}
-    save_preferences({"deadline_choices":{"canvas:school.edu:42:7":choice},"module_weeks":{"canvas:school.edu:42:module:3":"2026-11-09"}},path)
-    saved=load_preferences(path)
-    assert saved["deadline_choices"]["canvas:school.edu:42:7"]==choice
-    assert saved["module_weeks"]["canvas:school.edu:42:module:3"]=="2026-11-09"
+@pytest.mark.parametrize("old_mode", ["module", "week"])
+def test_old_week_settings_become_skip_without_losing_other_preferences(tmp_path, old_mode):
+    path = tmp_path / "settings.json"
+    manual = {"mode":"manual", "day":"2026-11-12", "clock":"23:59", "module":""}
+    old = {"mode":old_mode, "day":"2026-11-09", "clock":"23:59", "module":"canvas:school.edu:42:module:3"}
+    path.write_text(json.dumps({"source":"Canvas", "google_resume":True, "courses":{"https://school.edu":[42]},
+        "deadline_choices":{"canvas:school.edu:42:7":manual, "canvas:school.edu:42:8":old},
+        "module_weeks":{"canvas:school.edu:42:module:3":"2026-11-09"}}))
+    original = path.read_text()
+    loaded = load_preferences(path)
+    assert loaded["deadline_choices"]["canvas:school.edu:42:7"] == {k:v for k,v in manual.items() if k != "module"}
+    assert loaded["deadline_choices"]["canvas:school.edu:42:8"]["mode"] == "skip"
+    assert loaded["source"] == "Canvas" and loaded["google_resume"]
+    assert loaded["courses"] == {"https://school.edu":[42]}
+    assert "module_weeks" not in loaded and path.read_text() == original
+    save_preferences({"canvas_resume":True}, path)
+    assert "module_weeks" not in json.loads(path.read_text())

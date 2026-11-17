@@ -8,23 +8,23 @@ before their deadlines.
 
 ## Technology stack
 
-- Python
-- Streamlit
-- SQLite and SQLAlchemy
-- pandas
-- pytest
-- Canvas REST API
-- Google Calendar API
-- scikit-learn later in development
+- Python (project .venv) and Streamlit 1.66.0
+- pytest, including Streamlit AppTest
+- Canvas REST API; Google Calendar REST API and Google OAuth SDKs
+- Native macOS Keychain through keyring; private local JSON preferences/receipts
+- SQLite/SQLAlchemy, custom prediction training, and public/multiuser hosting are deferred
 
 ## Development priorities
 
-1. Build and test the scheduling logic using sample JSON data.
-2. Add a simple Streamlit interface.
-3. Add SQLite storage.
-4. Integrate the Canvas API.
-5. Integrate Google Calendar.
-6. Experiment with prediction models only after collecting data.
+1. Preserve the tested local Canvas-to-schedule-to-reviewed-Calendar workflow.
+2. Next requested work: incremental LLM-assisted duration estimation, retaining the
+   rule-based baseline/fallback and independent student duration adjustments.
+3. Choose local versus hosted provider/model with the user; neither is configured yet.
+   Use mocked responses and synthetic assignments first. Do not transmit private assignment
+   data to a hosted model or install/download models without the user's authorization.
+4. Evaluate estimates against actual active completion minutes before claiming improvement.
+   No completion-time dataset or personalized trained model exists yet.
+5. Defer database, broader calendar reconciliation, multiuser OAuth, and public deployment.
 
 ## Coding guidelines
 
@@ -62,7 +62,7 @@ remaining milestones in the project plan, and dated outcomes in the journal.
 Record decisions separately from exploratory ideas. Update these documents at
 milestone boundaries when requested; do not rely on previous chat history alone.
 
-## Current checkpoint — November 9, 2026
+## Current checkpoint — November 16, 2026
 
 - Completed: validated `Assignment` dataclass, four synthetic JSON records,
   `load_assignments()`, and model/loader tests.
@@ -109,19 +109,25 @@ milestone boundaries when requested; do not rely on previous chat history alone.
 - Disconnect disables automatic reconnection; class choices remain saved. First connection
   after upgrading enables resume. Google auto-resume must never launch browser OAuth.
   Plans and export approvals are not persisted. No automatic calendar writes on page load.
-- Completed: undated assignment review (manual student deadlines or week-based lower
-  priority), saved module-week mapping, and Roll Call filtering (531 passing cases).
-  Module lookup is read-only/all-page; refresh configured mappings on re-import. Never
-  infer a week from module names/unlock dates. Real Canvas dates override student targets.
-- The user clarified end of week means after dated work for that reference week, not a
-  hard Sunday due date. Weekly work waits until the last related dated-work day/session,
-  can spill to later available dates within the planning horizon, and does not displace
-  dated work. Exact accounting/busy/daily limits apply across both passes. Core scheduler
-  and estimator unchanged. Preserve the user's Select Classes to Import label.
-- Next: user live rehearsal of new consent, busy-aware generation, preview/export, and retries.
-  Automatic moving/deleting and changed-schedule reconciliation remain a later milestone.
+- Undated assignments now offer only Manual deadline or Do not schedule (512 passing tests). Module/week
+  planning, metadata lookups, and priority staging were removed at the user's request.
+  Legacy week/module preferences load as skip; preserve manual deadlines/classes/connections.
+  Real Canvas deadlines take precedence. Core scheduler, estimator, Roll Call exclusion,
+  and reviewed Calendar export remain. Preserve Select Classes to Import wording.
+- Generate/Preview automatically recognize missing/cancelled confirmed Google exports
+  (533 total passing tests).
+  Recheck remote absence, retain deleted receipt history, and use new deterministic stable
+  replacement IDs. Preview marks free future sessions ready; exports still require approval.
+  No separate deletion confirmation needed. Existing matching events never duplicate, moved
+  events stay protected, read failures fail closed, and old approvals cannot send replacements.
+  The obsolete deleted-session review panel and manual service were removed. Keep Review
+  unfinished exports for pending/uncertain attempts; never clear the ledger as a workaround.
+- Next: LLM estimation design and first mocked/tested increment. Read
+  docs/llm-estimation-handoff.md and project-plan.md section 22. No LLM integration is
+  implemented yet. Automatic moves/deletes and broader reconciliation remain deferred.
 - No full database exists; database work remains deferred.
-- Local Qwen/Ollama estimation was discussed only as a possible later comparison.
+- Local Qwen/Ollama was discussed; the user has now requested LLM estimation as the next
+  milestone. Provider/model, local runtime, and any hosted budget remain undecided.
 - Use the project's `.venv`; avoid installing dependencies into Anaconda/global Python.
 - Run tests from the repository root with `.venv/bin/python -m pytest -v`.
 - Do not run test files directly through Code Runner; use pytest or VS Code Testing.

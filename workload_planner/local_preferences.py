@@ -11,7 +11,7 @@ from datetime import date, time
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / ".local" / "planner_preferences.json"
 _LOCK = RLock()
 DEFAULTS = {"source": "Sample data", "canvas_site": "https://cilearn.csuci.edu",
-            "canvas_resume": False, "google_resume": False, "courses": {}, "deadline_choices": {}, "module_weeks": {}}
+            "canvas_resume": False, "google_resume": False, "courses": {}, "deadline_choices": {}}
 
 
 def _site(value: object) -> bool:
@@ -27,9 +27,13 @@ def _site(value: object) -> bool:
 
 
 def _validate(data: object) -> dict:
-    if not isinstance(data, dict) or set(data) - set(DEFAULTS):
+    if not isinstance(data, dict) or set(data) - (set(DEFAULTS) | {"module_weeks"}):
         raise ValueError("Saved planner preferences are invalid; the file was not overwritten.")
     result = {**DEFAULTS, **data}
+    # Accept the old file layout, but never restore removed module/week behavior.
+    legacy_weeks = result.pop("module_weeks", {})
+    if not isinstance(legacy_weeks, dict):
+        raise ValueError("Saved planner preferences are invalid.")
     if (result["source"] not in ("Sample data", "Canvas") or not _site(result["canvas_site"])
             or any(type(result[key]) is not bool for key in ("canvas_resume", "google_resume"))
             or not isinstance(result["courses"], dict)):
@@ -37,13 +41,11 @@ def _validate(data: object) -> dict:
     for site, ids in result["courses"].items():
         if not _site(site) or not isinstance(ids, list) or any(type(cid) is not int or cid <= 0 for cid in ids) or len(set(ids)) != len(ids):
             raise ValueError("Saved class selections are invalid; the file was not overwritten.")
-    if not isinstance(result["deadline_choices"], dict) or not isinstance(result["module_weeks"], dict):
+    if not isinstance(result["deadline_choices"], dict):
         raise ValueError("Saved planning targets are invalid.")
-    for key, day in result["module_weeks"].items():
-        if not isinstance(key, str) or not key.startswith("canvas:") or not isinstance(day, str) or date.fromisoformat(day).weekday() != 0:
-            raise ValueError("Saved module weeks are invalid.")
+    choices = {}
     for key, choice in result["deadline_choices"].items():
-        if not isinstance(key, str) or not key.startswith(("canvas:", "sample-")) or not isinstance(choice, dict) or set(choice) != {"mode", "day", "clock", "module"}:
+        if not isinstance(key, str) or not key.startswith(("canvas:", "sample-")) or not isinstance(choice, dict) or set(choice) not in ({"mode", "day", "clock"}, {"mode", "day", "clock", "module"}):
             raise ValueError("Saved planning targets are invalid.")
         if any(not isinstance(value, str) for value in choice.values()) or choice["mode"] not in ("skip", "manual", "week", "module"):
             raise ValueError("Saved planning targets are invalid.")
@@ -51,6 +53,9 @@ def _validate(data: object) -> dict:
         clock = time.fromisoformat(choice["clock"])
         if clock.tzinfo is not None or clock.second or clock.microsecond:
             raise ValueError("Saved planning times must be local whole minutes.")
+        choices[key] = {"mode": choice["mode"] if choice["mode"] == "manual" else "skip",
+                        "day": choice["day"], "clock": choice["clock"]}
+    result["deadline_choices"] = choices
     return result
 
 
